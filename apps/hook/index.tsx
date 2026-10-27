@@ -1,11 +1,11 @@
 import { setStorageBackend } from '@plannotator/ui/utils/storage';
-import { plannotatorGmailStorage } from '@plannotator/ui/utils/plannotatorGmailStorage';
+import { plannotatorSuperhumanStorage } from '@plannotator/ui/utils/plannotatorSuperhumanStorage';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@plannotator/editor';
 import '@plannotator/editor/styles';
 
-setStorageBackend(plannotatorGmailStorage);
+setStorageBackend(plannotatorSuperhumanStorage);
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

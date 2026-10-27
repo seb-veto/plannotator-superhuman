@@ -197,11 +197,11 @@ test.skipIf(!hasDom)('with a file open beside the thread, ‹ Inbox leads the he
 
   await act(async () => back(el)!.click());
   await until(() => el.querySelector('.ib-view') === null && listRow(el, ids.filed) !== null, 'the list back beside the thread');
-  // The file closed; the thread is still open beside the list, the sidebar back to the saved choice (open).
+  // The file closed; the thread is still open beside the list, the sidebar back to the saved choice (collapsed).
   expect(window.location.hash).toContain(`thread=${ids.filed}`);
   expect(window.location.hash).not.toContain('file=');
   expect(el.querySelector(`section.ib-pane[data-thread-id="${ids.filed}"]`)).not.toBeNull();
-  expect(sidebarState(el)).toBe('expanded');
+  expect(sidebarState(el)).toBe('collapsed');
   // The header is as it is with no file: no way back, the thread's × again.
   expect(back(el)).toBeNull();
   expect(closeThread(el)).not.toBeNull();
@@ -269,5 +269,5 @@ test.skipIf(!hasDom)('with no file open, the thread header is as before: no way 
   expect(back(el)).toBeNull();
   expect(el.querySelector('[data-stack-back]')).toBeNull();
   expect(closeThread(el)).not.toBeNull();
-  expect(sidebarState(el)).toBe('expanded');
+  expect(sidebarState(el)).toBe('collapsed');
 });

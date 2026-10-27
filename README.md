@@ -1,3 +1,11 @@
+# Plannotator Superhuman version
+
+Separate dark desktop version matching the selected Superhuman reference, with Plannotator's working Inbox underneath. [Run, isolation and qualification](docs/plannotator-superhuman/README.md) · [Visual reference lock](docs/plannotator-superhuman/DESIGN.md).
+
+The original, Craft and Gmail versions remain separate. This checkout uses its own launcher and data directory.
+
+---
+
 # Plannotator Gmail fork
 
 A separate Gmail-style Priority Inbox. See [the Gmail fork guide](docs/plannotator-gmail/README.md) for screenshots, semantics and isolated startup. Based on the preserved Craft-style v2 fork below.

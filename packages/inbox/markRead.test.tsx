@@ -230,13 +230,12 @@ test.skipIf(!hasDom)('the reply box says what a Send does with the questions; af
   expect(questions.map((q) => q.state)).toEqual(['sent', 'sent']);
   expect(questions.every((q) => q.answer?.skipped && q.answer.by_reply)).toBe(true);
   expect(await serverSection(ids.stopped)).toBe('sent');
-  // Gmail groups follow the completed work state; no question was implicitly answered by viewing.
-  expect(sectionOfRow(el, ids.stopped)).toBe('priority-3');
+  // Completed work leaves Important; switching to Other reveals the same thread.
+  expect(sectionOfRow(el, ids.stopped)).toBeNull();
   act(() => (el.querySelector('.ib-phead [aria-label="Close the thread"]') as HTMLButtonElement).click());
-  await until(() => sectionOfRow(el, ids.stopped) === 'priority-3', 'the row in Sent');
-  // Sent sits below New since you looked, just above Quiet.
-  const order = [...el.querySelectorAll('[data-priority-group]')].map((g) => g.getAttribute('data-priority-group'));
-  expect(order).toEqual(['priority-0','priority-1','priority-2','priority-3']);
+  act(() => (el.querySelector('[role="tab"][data-split="other"]') as HTMLButtonElement).click());
+  await until(() => sectionOfRow(el, ids.stopped) === 'other', 'the sent row in Other');
+  expect([...el.querySelectorAll('[data-priority-group]')].map(g=>g.getAttribute('data-priority-group'))).toEqual(['other']);
 });
 
 test.skipIf(!hasDom)('words only: Keep open by default; the Send leaves the questions open and tells the agent so', async () => {
@@ -323,8 +322,8 @@ test.skipIf(!hasDom)('Mark read warns when an agent is stopped; E is not taken w
   expect(toast.getAttribute('role')).toBeNull();
   expect((await questionStates(ids.stopped)).map((q) => q.state)).toEqual(['closed', 'closed']);
   expect(await serverSection(ids.stopped)).toBe('quiet');
-  // Gmail moves a dismissed thread to Everything else while preserving the open reader.
-  expect(sectionOfRow(el, ids.stopped)).toBe('priority-3');
+  // A dismissed thread leaves Important while its open reader is preserved.
+  expect(sectionOfRow(el, ids.stopped)).toBeNull();
 
   act(() => button(el, 'Reply').click());
   await settle();
@@ -342,7 +341,7 @@ test.skipIf(!hasDom)('Mark read warns when an agent is stopped; E is not taken w
   expect((await questionStates(ids.stopped)).map((q) => q.state)).toEqual(['open', 'open']);
 });
 
-test.skipIf(!hasDom)('the Gmail header leads with Back then Mark read; Archive remains beside the close', async () => {
+test.skipIf(!hasDom)('the reader header leads with Back then Mark read; Archive remains beside the close', async () => {
   // Owner, 2026-10-16: "the archive button needs to move next to the close button. Mark read should be the furthest."
   // The hairline between them is approval "inbox-thread-artifacts" (2026-10-23): icons at the right, then | and the close.
   const el = await renderApp(`#thread=${ids.stopped}`);
@@ -406,15 +405,16 @@ test.skipIf(!hasDom)("the toast's × closes it early and drops its Undo: Z no lo
   expect(await serverSection(ids.stopped)).toBe('quiet');
 });
 
-test.skipIf(!hasDom)('the row hover action marks read without opening the thread; Everything else retains its explicit Read state', async () => {
+test.skipIf(!hasDom)('the row hover action marks read without opening the thread; Other retains its explicit Read state', async () => {
   const el = await renderApp(`#project=${ids.project}`);
   const action = el.querySelector(`[data-row="${ids.waiting}"] [data-row-mark-read]`) as HTMLButtonElement;
   expect(action.textContent).toContain('Mark read');
   act(() => action.click());
   await until(() => document.querySelector('[data-inbox-toast]') !== null, 'the toast');
   expect(window.location.hash).toBe(`#project=${ids.project}`);
-  // Gmail shows the dismissed thread in Everything else.
-  expect(sectionOfRow(el, ids.waiting)).toBe('priority-3');
+  // Switching splits reveals the dismissed row without changing its read state.
+  act(() => (el.querySelector('[role="tab"][data-split="other"]') as HTMLButtonElement).click());
+  await until(()=>sectionOfRow(el, ids.waiting)==='other','the read row in Other');
   // A plain toast: no warning, no Reply.
   const toast = document.querySelector('[data-inbox-toast]') as HTMLElement;
   expect(toast.textContent).toContain('Moved to Quiet');

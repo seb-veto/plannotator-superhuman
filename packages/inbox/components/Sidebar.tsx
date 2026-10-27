@@ -1,4 +1,4 @@
-import { MAIL_VIEWS, type MailView } from '../gmail-priority';
+import { MAIL_VIEWS, type MailView } from '../superhuman';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { InboxHealth, InboxListRow, InboxRestartAgents } from '@plannotator/core/inbox-types';
 import { restartAgentsDescription, restartAgentsLabel, restartAgentsOf } from '../restartAgents';

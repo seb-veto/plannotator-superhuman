@@ -1,3 +1,5 @@
+> Historical base guide. In this checkout, use [the Superhuman version guide](../plannotator-superhuman/README.md) and its launcher.
+
 # Plannotator Gmail
 
 A separate fork of Plannotator with Gmail's light Priority Inbox as the target. Built from [Craft-style v2 commit 070dba1](https://github.com/seb-veto/plannotator-v2/commit/070dba1a79b67217d0301b861f57b04ce57e563a). This independent GitHub repository starts with the complete verified source snapshot; the base history remains in that linked fork and the local `gmail-source-history` branch. GitHub reused the existing fork when asked for a second one, so v2 was restored and this repository was created separately. It is an agent Inbox, not a connection to a Gmail account.

@@ -1,6 +1,6 @@
-import { GmailInbox } from './components/GmailInbox';
-import { GmailHeader } from './components/GmailHeader';
-import { gmailUnreadCounts, type MailView } from './gmail-priority';
+import { SuperhumanInbox } from './components/SuperhumanInbox';
+import { SuperhumanHeader } from './components/SuperhumanHeader';
+import { unreadCounts, type MailView } from './superhuman';
 /**
  * The Plannotator Inbox window (`plannotator inbox`), built to its design of
  * record (kept privately, not in this repo). A mail client for
@@ -484,13 +484,13 @@ function Inbox() {
     return readRoute();
   });
   // Open or closed as the person left it (⌘B or the toggle): a cookie of the Inbox's own, open when absent.
-  const [sidebarOpen, setSidebarOpen] = useState(() => storage.getItem(SIDEBAR_OPEN_COOKIE) !== 'false');
+  const [sidebarOpen, setSidebarOpen] = useState(() => storage.getItem(SIDEBAR_OPEN_COOKIE) === 'true');
   const changeSidebar = useCallback((next: boolean) => {
     setSidebarOpen(next);
     storage.setItem(SIDEBAR_OPEN_COOKIE, String(next));
   }, []);
   const [latest, setLatest] = useState<ListModel | null>(null);
-  const mailCounts = gmailUnreadCounts(latest?.sections ?? []);
+  const mailCounts = unreadCounts(latest?.sections ?? []);
   /**
    * Decision mode (experimental, approval "inbox-decision-mode"): the
    * projection while the feature is on, and the sitting (open, or tucked
@@ -531,14 +531,14 @@ function Inbox() {
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const [thread, setThread] = useState<InboxThread | null>(null);
-  // Gmail replaces the list: focus follows a newly opened reader without disturbing an existing draft.
+  // The split Inbox replaces the list: focus follows a newly opened reader without disturbing an existing draft.
   useLayoutEffect(() => {
     if (route.page !== 'inbox' || !route.thread || thread?.thread_id !== route.thread || route.file || route.guide) return;
     const active = document.activeElement;
     if (!active || active === document.body || active.closest('.gm-mail')) focusFirst(['section.ib-pane h2.ib-subject']);
   }, [route.page, route.thread, thread?.thread_id, route.file, route.guide]);
   const [unreadOnly, setUnreadOnly] = useState(false);
-  const [mailView, setMailView] = useState<MailView>('inbox');
+  const [mailView, setMailView] = useState<MailView>('important');
   /** The open thread's own list row, from its read: an archived thread has none in the list. */
   const [threadRow, setThreadRow] = useState<InboxListRow | null>(null);
   /** The open thread's read when it has not landed: failed (read again soon) or missing (a 404). */
@@ -3386,7 +3386,7 @@ function Inbox() {
     main = (
       <>
         {!fileOpen && !fromCard && (
-        <GmailInbox
+        <SuperhumanInbox
           mailView={mailView}
           marks={latest?.priority ?? {}}
           onPriority={async (id, mark) => { await inboxApi.priority(id, mark); await refreshList(false); }}
@@ -3654,7 +3654,7 @@ function Inbox() {
             // The Board (approval "inbox-board"): a row only while the person has it on; no count (the header has it).
             onBoard={boardEnabled ? () => leave({ page: 'board', project: null, thread: null }) : undefined}
             // On the list it shows, Inbox (or a project) refreshes; with a thread open it closes it as before, and refreshes.
-            onInbox={() => { setMailView('inbox'); return (route.page === 'inbox' && route.project === null ? void refreshInbox(null, route.thread !== null) : leave({ page: 'inbox', project: null, thread: null })); }}
+            onInbox={() => { setMailView('important'); return (route.page === 'inbox' && route.project === null ? void refreshInbox(null, route.thread !== null) : leave({ page: 'inbox', project: null, thread: null })); }}
             onProject={(projectId) =>
               route.page === 'inbox' && route.project === projectId ? void refreshInbox(projectId, route.thread !== null) : leave({ page: 'inbox', project: projectId, thread: null })
             }
@@ -3673,7 +3673,7 @@ function Inbox() {
           )
         }
       >
-        <GmailHeader onSearch={openSearch} onSettings={() => go({ page: 'settings', project: null, thread: null, section: 'general' })} />
+        <SuperhumanHeader view={mailView} sections={filterSections(latest?.sections ?? [],route.project,false)} marks={latest?.priority ?? {}} page={route.page} onView={next=>{setMailView(next);setUnreadOnly(false);leave({page:'inbox',project:route.project,thread:null});}} onInbox={()=>{setMailView('important');setUnreadOnly(false);leave({page:'inbox',project:null,thread:null});}} onBoard={boardEnabled?()=>leave({page:'board',project:null,thread:null}):undefined} onCompose={opener=>openCompose({},opener)} onSearch={openSearch} onSettings={() => go({ page: 'settings', project: null, thread: null, section: 'general' })} />
         <main className="ib-main">{main}</main>
       </SidebarShell>
       {updateDialog === 'update' && update && (
@@ -3895,7 +3895,7 @@ function Inbox() {
 
 export function InboxApp() {
   return (
-    <ThemeProvider defaultTheme="light" defaultColorTheme="plannotator-gmail">
+    <ThemeProvider defaultTheme="dark" defaultColorTheme="plannotator-superhuman">
       {/* Every tooltip in the window (Tip): 150 ms to open, and the next one at once within 400 ms. */}
       <TooltipProvider delayDuration={TIP_DELAY_MS} skipDelayDuration={TOOLTIP_SKIP_DELAY_MS} disableHoverableContent>
         <Inbox />

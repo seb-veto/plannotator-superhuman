@@ -1858,3 +1858,4 @@ body:has([data-popout="true"]) [data-sidebar-tabs="true"] {
 }
 
 @import "./themes/plannotator-gmail.css";
+@import "./themes/plannotator-superhuman.css";

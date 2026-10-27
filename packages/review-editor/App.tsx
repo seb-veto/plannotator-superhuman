@@ -4983,7 +4983,7 @@ const ReviewApp: React.FC = () => {
 
   if (isLoading) {
     return (
-      <ThemeProvider defaultTheme="light" defaultColorTheme="plannotator-gmail" manageFavicon>
+      <ThemeProvider defaultTheme="dark" defaultColorTheme="plannotator-superhuman" manageFavicon>
         <div className="pn-app-viewport flex items-center justify-center bg-background">
           <div className="text-muted-foreground text-sm">Loading diff...</div>
         </div>
@@ -4992,7 +4992,7 @@ const ReviewApp: React.FC = () => {
   }
 
   return (
-    <ThemeProvider defaultTheme="light" defaultColorTheme="plannotator-gmail" manageFavicon>
+    <ThemeProvider defaultTheme="dark" defaultColorTheme="plannotator-superhuman" manageFavicon>
       <TooltipProvider>
       <ReviewStateProvider value={reviewStateValue}>
       <JobLogsProvider value={jobLogsValue}>

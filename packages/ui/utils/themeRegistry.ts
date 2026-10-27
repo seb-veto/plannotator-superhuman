@@ -21,6 +21,7 @@ export interface ThemeInfo {
 }
 
 export const BUILT_IN_THEMES: ThemeInfo[] = [
+  {id:'plannotator-superhuman',name:'Plannotator Superhuman',builtIn:true,modeSupport:'both',colors:{dark:{primary:'#bea1f5',secondary:'#353331',accent:'#474543',background:'#292827',foreground:'#f4f3f1'},light:{primary:'#7650b5',secondary:'#f2f0ed',accent:'#f5f0fd',background:'#ffffff',foreground:'#181817'}}},
   { id: 'plannotator-gmail', name: 'Plannotator Gmail', builtIn: true, modeSupport: 'both', colors: {
     light: { primary: '#0b57d0', secondary: '#eaf1fb', accent: '#d3e3fd', background: '#f6f8fc', foreground: '#1f1f1f' },
     dark: { primary: '#b29fff', secondary: '#292a2c', accent: '#292a2c', background: '#1b1c1e', foreground: '#ecedef' },

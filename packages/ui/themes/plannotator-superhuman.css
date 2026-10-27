@@ -1,0 +1,11 @@
+/* Warm Carbon values sampled from Superhuman's September 2026 desktop theme image. */
+.theme-plannotator-superhuman {
+ --background:#292827;--foreground:#f4f3f1;--card:#292827;--card-foreground:#f4f3f1;--popover:#353331;--popover-foreground:#f4f3f1;
+ --primary:#bea1f5;--primary-foreground:#211d29;--secondary:#353331;--secondary-foreground:#f4f3f1;--muted:#353331;--muted-foreground:#aaa6a1;
+ --accent:#474543;--accent-foreground:#f4f3f1;--destructive:#f28b82;--destructive-foreground:#211d29;--border:#3d3b38;--input:#625e59;--ring:#bea1f5;
+ --success:#81c995;--success-foreground:#20231f;--warning:#f2c576;--warning-foreground:#29231c;--font-sans:Arial,sans-serif;--font-mono:'SF Mono',monospace;--radius:.375rem;--code-bg:#201f1e;--focus-highlight:#bea1f5;
+}
+.theme-plannotator-superhuman.light {
+ --background:#fff;--foreground:#181817;--card:#fff;--card-foreground:#181817;--popover:#fff;--popover-foreground:#181817;--primary:#7650b5;--primary-foreground:#fff;
+ --secondary:#f2f0ed;--secondary-foreground:#181817;--muted:#f5f2ef;--muted-foreground:#6f6b67;--accent:#f5f0fd;--accent-foreground:#181817;--border:#e5e1dc;--input:#938e88;--ring:#7650b5;--code-bg:#f5f2ef;
+}

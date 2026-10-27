@@ -1,5 +1,7 @@
 ## Inbox: window and questions
 
+- **Superhuman version overrides**: [the version guide](../plannotator-superhuman/README.md) supersedes the historical presentation below: current warm Carbon theme, rail, Important/Other split tabs, flat rows, centered reader and independent Superhuman storage.
+
 **The window** (`packages/inbox`, built by `apps/inbox` as a Vite single-file app).
 - **Gmail fork overrides**: [the Gmail guide](../plannotator-gmail/README.md) supersedes the v2 presentation below. `GmailInbox` uses four exclusive priority groups and independent Starred/Important/Unread/Sent/All mail filters. Marker state is person-only `inbox/priority.json`; updates broadcast `priority` to windows. Gmail cookies and data are isolated from the other forks.
 - **V2 fork overrides**: `craft.css` supplies the Craft-reference shell and `plannotator-v2` palette; see [the fork guide](../plannotator-v2/README.md). Desktop keeps a narrow list beside an empty reading pane; Settings retains primary navigation. Browser settings use the existing backend with a v2 key prefix.
