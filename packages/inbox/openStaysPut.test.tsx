@@ -7,7 +7,7 @@
  * nothing; closing the thread settles the list a beat later (at once under
  * reduced motion, with no animation), and focus goes to the row now in the
  * opened row's slot, never to the page; an agent's message that arrived while
- * reading stays behind "N new · Show" after the close until Show; and where
+ * reading is added automatically, without stealing focus; and where
  * the thread covers the list (a phone), Back shows the list as it was left
  * and it settles while the next thread covers it.
  *
@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { InboxListSection } from '@plannotator/core/inbox-types';
 import { PHONE_QUERY } from './phone';
-import { rowInSlot, SETTLE_BEAT_MS, SHOW_LIT_AFTER_SLIDE_MS, SHOW_LIT_MS } from './settle';
+import { rowInSlot, SETTLE_BEAT_MS } from './settle';
 
 const hasDom = typeof document !== 'undefined';
 const { InboxApp } = (hasDom ? await import('./App') : {}) as typeof import('./App');
@@ -425,69 +425,36 @@ test.skipIf(!hasDom)('opening a second row while one is open moves nothing; clos
   expect(document.activeElement).toBe(rowOf(el, slot));
 });
 
-test.skipIf(!hasDom)("an agent's message that arrives while reading stays behind Show after the close; Show brings it in", async () => {
+test.skipIf(!hasDom)('agent arrivals enter the Inbox automatically without changing the open thread or stealing focus', async () => {
   const el = await renderApp(`#project=${world.project}`);
   const first = world.news[0]!;
   await openRow(el, first);
+  const pane = el.querySelector('section.ib-pane');
+  const focus = document.activeElement;
   const late = await agentSends('A late note from the agent.');
   act(() => pokeStream!());
-  await until(() => el.querySelector('[data-inbox-notice]') !== null, 'the "1 new" notice');
-  expect(el.querySelector('[data-inbox-notice]')!.textContent).toContain('1 new in');
-  expect(rowOf(el, late)).toBeNull();
-
-  closeThread();
-  await wait(SETTLE_BEAT_MS + 60);
-  await until(() => rowOf(el, first) === null, 'the settle');
-  // Closing settled only the person's own read: the agent's message still waits.
-  expect(rowOf(el, late)).toBeNull();
-  expect(el.querySelector('[data-inbox-notice]')!.textContent).toContain('1 new in');
-
-  // Show from the keyboard: its line goes away, and focus goes to the row it brought in, not to the page.
-  const notice = el.querySelector('[data-inbox-notice]') as HTMLButtonElement;
-  act(() => {
-    notice.focus();
-    notice.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    notice.click();
-  });
-  await until(() => rowOf(el, late) !== null, 'Show');
+  await until(() => rowOf(el, late) !== null, 'automatic arrival');
   expect(sectionOfRow(el, late)).toBe('new');
   expect(el.querySelector('[data-inbox-notice]')).toBeNull();
-  expect(document.activeElement).toBe(rowOf(el, late));
-});
-
-// Show's brief light (design record "inbox-polish", item 6): the rows Show
-// brings in light up where they land, once they have slid into place, and
-// nothing else does; the light comes off after it fades. A thread's close
-// settles without it.
-test.skipIf(!hasDom)('Show lights exactly the rows it brought in, after they slid into place, and the light comes off', async () => {
-  const el = await renderApp(`#project=${world.project}`);
-  const first = world.news[0]!;
-  const moved = world.news[2]!;
-  await openRow(el, first);
-  const late = await agentSends('A late note from the agent.');
-  const reply = await agentSends('One more thing on this one.', moved);
-  expect(reply).toBeTruthy();
-  act(() => pokeStream!());
-  await until(() => el.querySelector('[data-inbox-notice]')?.textContent?.includes('2 new in') === true, 'the "2 new" notice');
-  const lit = () => [...el.querySelectorAll('.ib-listcol [data-thread-id][data-lit]')].map((r) => r.getAttribute('data-thread-id')!).sort();
-
-  // A close settles the person's own read and lights nothing.
+  expect(el.querySelector('section.ib-pane')).toBe(pane);
+  expect(sectionOfRow(el, first)).toBe('new');
+  expect(document.activeElement).toBe(focus);
   closeThread();
   await wait(SETTLE_BEAT_MS + 60);
   await until(() => rowOf(el, first) === null, 'the settle');
-  await wait(SHOW_LIT_AFTER_SLIDE_MS + 60);
-  expect(lit()).toEqual([]);
+  expect(rowOf(el, late)).not.toBeNull();
+});
 
-  const before = order(el);
-  mouseClick(el.querySelector('[data-inbox-notice]') as HTMLButtonElement);
-  await until(() => rowOf(el, late) !== null, 'Show');
-  // Not while the rows slide; then the new row and the row the agent wrote in, and no row that stayed as it was.
-  expect(lit()).toEqual([]);
-  await wait(SHOW_LIT_AFTER_SLIDE_MS + 60);
-  expect(lit()).toEqual([late, moved].sort());
-  expect(order(el).filter((id) => before.includes(id) && id !== moved).every((id) => !lit().includes(id))).toBe(true);
-  await wait(SHOW_LIT_MS);
-  expect(lit()).toEqual([]);
+test.skipIf(!hasDom)('new conversations appear automatically while the Inbox list is open', async () => {
+  const el = await renderApp(`#project=${world.project}`);
+  const late = await agentSends('Arrived in the open Inbox.');
+  act(() => pokeStream!());
+  await until(() => rowOf(el, late) !== null, 'automatic list arrival');
+  expect(await serverSection(late)).toBe('new');
+  expect(rowOf(el, late)!.classList.contains('ib-u')).toBe(true);
+  expect(sectionOfRow(el, late)).toBe('new');
+  expect(el.querySelector('[data-inbox-notice]')).toBeNull();
+  expect(el.querySelector('section.ib-pane')).toBeNull();
 });
 
 // The failure this guards (design record "inbox-new-in-open-thread", the
@@ -576,9 +543,7 @@ test.skipIf(!hasDom)('after a mouse close the window hands no row focus, and E a
   // Another active row, so Archive would apply to it.
   const asked = await agentSends('One question:\n\n:::question\nShip it?\n\n- [ ] Yes\n- [ ] No\n:::');
   act(() => pokeStream!());
-  await until(() => el.querySelector('[data-inbox-notice]') !== null, 'the "1 new" notice');
-  mouseClick(el.querySelector('[data-inbox-notice]') as HTMLButtonElement);
-  await until(() => rowOf(el, asked) !== null, 'Show');
+  await until(() => rowOf(el, asked) !== null, 'automatic question arrival');
   mouseClick(el.querySelector('section.ib-pane [aria-label="Close the thread"]') as HTMLButtonElement);
   await wait(SETTLE_BEAT_MS + 120);
   await until(() => rowOf(el, first) === null, 'the settle');
@@ -597,9 +562,7 @@ test.skipIf(!hasDom)('Mark read inside an open thread: the toast says the row wi
   // A seen update keeps Mark read while held in New; a waiting question does too.
   const asked = await agentSends('One question:\n\n:::question\nShip it?\n\n- [ ] Yes\n- [ ] No\n:::');
   act(() => pokeStream!());
-  await until(() => el.querySelector('[data-inbox-notice]') !== null, 'the "1 new" notice');
-  act(() => (el.querySelector('[data-inbox-notice]') as HTMLButtonElement).click());
-  await until(() => rowOf(el, asked) !== null, 'Show');
+  await until(() => rowOf(el, asked) !== null, 'automatic question arrival');
   await openRow(el, asked, null);
   await until(() => el.querySelector('[data-mark-read]') !== null && !(el.querySelector('[data-mark-read]') as HTMLButtonElement).disabled, 'Mark read');
   act(() => (el.querySelector('[data-mark-read]') as HTMLButtonElement).click());
@@ -626,21 +589,20 @@ test.skipIf(!hasDom)('a screen reader closing the thread (a click with no pointe
 // Pins (approval "inbox-pinned-threads"): a pin is the person's own write on window furniture, so pinning
 // the open thread from its header leaves the held list exactly as it is: its rows in their order, and the
 // agent's news still waiting behind "N new".
-test.skipIf(!hasDom)('pinning the open thread leaves the held row order and the "N new" line unchanged', async () => {
+test.skipIf(!hasDom)('pinning the open thread preserves automatically added arrivals', async () => {
   const el = await renderApp(`#project=${world.project}`);
   const first = world.news[0]!;
   await openRow(el, first);
   const late = await agentSends('A late note while the thread is open.');
   act(() => pokeStream!());
-  await until(() => el.querySelector('[data-inbox-notice]') !== null, 'the "1 new" notice');
+  await until(() => rowOf(el, late) !== null, 'automatic arrival');
   const held = order(el);
-  const notice = el.querySelector('[data-inbox-notice]')!.textContent;
-  expect(notice).toContain('1 new in');
+  expect(el.querySelector('[data-inbox-notice]')).toBeNull();
   const toggle = el.querySelector<HTMLButtonElement>('[data-pin-toggle]')!;
   act(() => toggle.click());
   await until(() => el.querySelector(`[data-pinned-row="${first}"]`) !== null, 'the pinned row');
   await wait(150);
   expect(order(el)).toEqual(held);
-  expect(rowOf(el, late)).toBeNull();
-  expect(el.querySelector('[data-inbox-notice]')!.textContent).toBe(notice);
+  expect(rowOf(el, late)).not.toBeNull();
+  expect(el.querySelector('[data-inbox-notice]')).toBeNull();
 });

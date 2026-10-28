@@ -1,9 +1,7 @@
 /**
- * The held list (the approved Workspaces behaviour): while the person reads,
- * the list on screen does not move. New agent activity waits behind the
- * "N new" notice until they press Show, change folder or page. The person's
- * own reads and actions wait too while a thread is open, and settle when it
- * closes (`settleOwn`; when that happens and how it moves: settle.ts). Pure.
+ * New agent activity appears automatically. The selected thread keeps its
+ * drawn section and neighbours; the person's own reads settle on close.
+ * Pure transformations shared by the Inbox presentations.
  */
 
 import type { InboxListRow, InboxListSection } from '@plannotator/core/inbox-types';
@@ -127,26 +125,22 @@ export function showBroughtIn(shown: readonly InboxListSection[], latest: readon
   return out;
 }
 
-/**
- * The held list with each row's own state brought up to date in place. The
- * rows keep their sections and their order, which wait for an action; but a
- * row whose thread changed without new agent activity (the reply was
- * delivered, an agent read it, the thread was resolved) shows its state as it
- * now is, so a Sent row stops saying "Saved for" once the agent has the
- * reply. A row with new agent activity keeps what was on screen: that change
- * waits behind "N new". A row whose thread is gone stays as it was.
- */
+/** Refresh row content and insert arrivals without settling the person's own reads. */
 export function refreshHeldRows(shown: readonly InboxListSection[], latest: readonly InboxListSection[], open?: OpenThread | null): InboxListSection[] {
   const fresh = rowsById(latest);
-  return shown.map((section) => ({
+  const drawn = new Map(shown.flatMap(section => section.threads.map(row => [row.thread_id, section.id] as const)));
+  const before = rowsById(shown);
+  const arriving = latest.flatMap(section => section.threads)
+    .filter(row => !before.has(row.thread_id) || (!isOpenRow(row, open) && hasNewAgentActivity(before.get(row.thread_id), row) && drawn.get(row.thread_id) !== row.section))
+    .map(row => row.thread_id);
+  const moving = new Set(arriving);
+  const updated = shown.map(section => ({
     ...section,
-    threads: section.threads.map((row) => {
-      const next = fresh.get(row.thread_id);
-      // The open thread's row always tells its state, in place: bold when an
-      // agent message arrives, not bold once it is seen (it never moves).
-      return next && (isOpenRow(next, open) || !hasNewAgentActivity(row, next)) ? next : row;
-    }),
+    // Own reads still settle on close. New activity updates immediately, with
+    // only the selected thread held in its drawn section and position.
+    threads: section.threads.filter(row => !moving.has(row.thread_id)).map(row => fresh.get(row.thread_id) ?? row),
   }));
+  return addOwnThreads(updated, latest, arriving);
 }
 
 /** The list's own order within a section (packages/shared/inbox/list.ts): newest first, ties on the thread id. */

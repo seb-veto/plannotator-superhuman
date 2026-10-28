@@ -98,7 +98,7 @@ describe('refreshHeldRows', () => {
   // The failure this guards: after the person's reply was delivered, the held
   // list kept the row's whole old state, so it said "Saved for <agent>" until
   // a reload while the thread beside it said "Delivered".
-  test("a row's own state follows a delivery in place; the order and new agent activity stay held", () => {
+  test("row state and new agent activity update immediately while own section moves stay held", () => {
     const sentRow = { ...row('a', 'billing-svc', '2026-10-07T10:05:00Z', 'person'), section: 'sent', sent: { at: '2026-10-07T10:05:00Z', checked_at: null } } as InboxListRow;
     const other = { ...row('b', 'docs-site', '2026-10-07T10:00:00Z', 'agent'), section: 'waiting' } as InboxListRow;
     const shown: InboxListSection[] = [
@@ -119,8 +119,8 @@ describe('refreshHeldRows', () => {
     // The delivered row shows its state as it now is.
     expect(next[1]!.threads[0]).toBe(delivered);
     // The row with a newer agent message keeps what was on screen, and still counts behind "N new".
-    expect(next[0]!.threads[0]).toBe(other);
-    expect(heldNotice(next, latest).count).toBe(1);
+    expect(next[0]!.threads[0]).toBe(newer);
+    expect(heldNotice(next, latest).count).toBe(0);
   });
 });
 
@@ -270,14 +270,14 @@ describe('the open thread', () => {
 
   test('the open thread\'s row goes bold in place on arrival and unbolds in place once seen; it never moves', () => {
     const onArrival = refreshHeldRows(shown, bySection(asked, other, elsewhere), OPEN);
-    expect(ids(onArrival)).toEqual(['new:open,other']);
-    expect(onArrival.find((s) => s.id === 'new')!.threads[0]).toBe(asked);
-    expect(onArrival.find((s) => s.id === 'new')!.threads[0]).toMatchObject({ unread: true, unseen: 1 });
+    expect(ids(onArrival)).toEqual(['new:elsewhere,open,other']);
+    expect(onArrival.find((s) => s.id === 'new')!.threads.find(row => row.thread_id === 'open')!).toBe(asked);
+    expect(onArrival.find((s) => s.id === 'new')!.threads.find(row => row.thread_id === 'open')!).toMatchObject({ unread: true, unseen: 1 });
     const onSeen = refreshHeldRows(onArrival, bySection(seen, other, elsewhere), OPEN);
-    expect(ids(onSeen)).toEqual(['new:open,other']);
-    expect(onSeen.find((s) => s.id === 'new')!.threads[0]).toMatchObject({ unread: false, unseen: 0 });
-    // Without the exemption the arrival waits behind "N new": the row keeps what it showed.
-    expect(refreshHeldRows(shown, bySection(asked, other)).find((s) => s.id === 'new')!.threads[0]).toBe(openShown);
+    expect(ids(onSeen)).toEqual(['new:elsewhere,open,other']);
+    expect(onSeen.find((s) => s.id === 'new')!.threads.find(row => row.thread_id === 'open')!).toMatchObject({ unread: false, unseen: 0 });
+    // Without an open thread, the new question enters its current section immediately.
+    expect(refreshHeldRows(shown, bySection(asked, other)).find((s) => s.id === 'waiting')!.threads[0]).toBe(asked);
   });
 
   test('closed before the arrival was seen: it settles unread, in New, or in Waiting when it asks', () => {
@@ -309,7 +309,7 @@ describe('the open thread', () => {
     const atClose = { ...openShown, section: 'quiet', unseen: 0 } as InboxListRow;
     const onScreen = bySection({ ...atClose }, other);
     expect(heldNotice(onScreen, bySection(asked, other), undefined, closedAs(atClose))).toEqual({ count: 1, text: '1 new in billing-svc' });
-    expect(refreshHeldRows(onScreen, bySection(asked, other), closedAs(atClose)).find((s) => s.id === 'quiet')!.threads[0]).toMatchObject({ unseen: 0 });
+    expect(refreshHeldRows(onScreen, bySection(asked, other), closedAs(atClose)).find((s) => s.id === 'waiting')!.threads[0]).toMatchObject({ unseen: 1 });
     expect(ids(settleOwn(onScreen, bySection(asked, other), undefined, closedAs(atClose)))).toEqual(['new:other', 'quiet:open']);
     // No row for it at the close (an older list): nothing is exempt.
     expect(heldNotice(onScreen, bySection(asked, other), undefined, closedAs(null)).count).toBe(1);

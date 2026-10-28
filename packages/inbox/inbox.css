@@ -2396,7 +2396,8 @@ button.ib-vtime:hover { background: color-mix(in oklch, var(--primary) 22%, tran
 
   /* one screen at a time: the list stays mounted under an open thread (its scroll kept for Back) */
   .pn-inbox[data-view="thread"] .ib-listcol { position: absolute; inset: 0; visibility: hidden; }
-  .ib-lbody { overflow-anchor: none; }
+  /* Automatic arrivals keep the visible row anchored while the list grows. */
+  .ib-lbody { overflow-anchor: auto; }
   .ib-listcol.ib-narrow { flex: 1; width: auto; border-right: 0; }
   .pn-inbox[data-view="file"] .ib-pane.ib-withfile { display: none; }
   @media (prefers-reduced-motion: no-preference) {
