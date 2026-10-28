@@ -337,6 +337,7 @@ export function BoardPage(props: BoardPageProps) {
       card={open}
       projectName={projectOf(open)?.name ?? ''}
       projectRoot={projectOf(open)?.root ?? null}
+      projects={props.projects}
       sessions={sessions}
       live={live}
       phone={phone}
@@ -794,7 +795,7 @@ function CardList({ title, empty, cards, ...common }: CardCommon & { title: stri
 }
 
 /**
- * The Icebox page: work currently unassigned; deferral sends no message, then Dropped with the date, who dropped
+ * The Icebox page: work to revisit later; deferral sends no message, then Dropped with the date, who dropped
  * it, the reason and Restore. Opening it is the person looking at Dropped.
  */
 function IceboxPage({
@@ -831,7 +832,7 @@ function IceboxPage({
   const dropped = cards.filter((c) => c.column === 'dropped').sort((a, b) => (b.dropped?.at ?? b.moved_at).localeCompare(a.dropped?.at ?? a.moved_at));
   return (
     <div className="ib-blists">
-      <CardList title="Icebox" empty="Nothing on ice. Put work here to leave it unassigned. Restore returns it to Backlog." cards={iced} {...common} />
+      <CardList title="Icebox" empty="Nothing on ice. Keep work here to revisit when time or resources allow. Restore returns it to Backlog." cards={iced} {...common} />
       <DroppedList cards={dropped} onRestore={onRestore} />
     </div>
   );
@@ -953,6 +954,7 @@ function PhoneBoard({
  * again when a link is added; never before a card is opened).
  */
 function OpenedCard({
+  projects,
   card,
   projectName,
   projectRoot,
@@ -968,6 +970,7 @@ function OpenedCard({
   onOpenThread,
 }: {
   card: InboxCardWire;
+  projects: readonly ProjectFolder[];
   projectName: string;
   projectRoot: string | null;
   sessions: ComposeSessionsModel | null;
@@ -1085,6 +1088,11 @@ function OpenedCard({
         } catch (cause) {
           return cause instanceof Error ? cause.message : 'Nothing was sent.';
         }
+      }}
+      projects={projects}
+      onProject={async (project_id) => {
+        try { onChanged((await inboxApi.editCard(card.id, { op: 'project', project_id })).card); return null; }
+        catch (cause) { return cause instanceof Error ? cause.message : 'Project was not changed. Try again.'; }
       }}
       onLabels={async (labels) => {
         try {

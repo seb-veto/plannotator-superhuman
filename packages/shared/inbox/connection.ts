@@ -175,7 +175,7 @@ export const INBOX_AGENT_ACTION_LEADS: Readonly<Record<string, string>> = {
   read_thread: 'Read a thread (thread_id): open questions, the newest messages, earlier ones one line each; or list yours.',
   search: 'Find messages by words (read-only).',
   get_guide_brief: "Get Plannotator's method, the guide's JSON shape and the rules for writing a guided review, with a worked submit_guide call.",
-  card: "A Board card for work that outlasts this reply: create, move, say, edit notes, defer (unassign), or assign (metadata only).",
+  card: "A Board card for work that outlasts this reply: create, move, say, edit notes, defer (do later), assign an agent (metadata only), or change its project.",
 }
 
 /**

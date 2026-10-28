@@ -982,7 +982,7 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
 
   /**
    * The person's moves on a card (`POST /api/inbox/cards/:id`): `op` move
-   * (`column`, any; a move to dropped may carry `reason`), icebox (unassign),
+   * (`column`, any; a move to dropped may carry `reason`), icebox (defer until later),
    * drop (`reason` optional), restore (Icebox to Backlog; Dropped to its previous
    * column), edit notes/title, link, assign metadata, or send through a thread.
    */
@@ -1006,13 +1006,16 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
       case "link":
         // A thread or a reference (issue, PR) the person links from the opened card.
         return store.updateCard(id, { by, threads: body.thread_id ? [body.thread_id] : [], refs: body.ref ? [body.ref] : [] });
+      case "project":
+        if (body.project_id === undefined || body.project_id === null) throw new InboxError("validation_error", "project_id: choose a project.", { field: "project_id" });
+        return store.updateCard(id, { by, project_id: body.project_id });
       case "assign":
         return store.assignCard(id, { by, session: body.assign_to, host: body.assign_host });
       case "send":
         // Sent to an agent: `thread_id` is the thread the window just started for it (compose's Send).
         return store.sendCard(id, { thread_id: body.thread_id });
       default:
-        throw new InboxError("validation_error", "op: move, icebox, drop, restore, edit, link, assign or send.", { field: "op" });
+        throw new InboxError("validation_error", "op: move, icebox, drop, restore, edit, link, assign, project or send.", { field: "op" });
     }
   };
 

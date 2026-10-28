@@ -846,7 +846,7 @@ export const inboxApi = {
   moveCard: (id: string, change: { op: 'move'; column: InboxCardColumn } | { op: 'icebox' } | { op: 'drop'; reason?: string | null } | { op: 'restore' }) =>
     post<{ card: InboxCardWire }>(`/api/inbox/cards/${encodeURIComponent(id)}`, change),
   /** The opened card's edits: title, notes; a link (a thread, an issue or PR); sent to an agent (the thread just started). */
-  editCard: (id: string, change: { op: 'edit'; title?: string; notes?: string | null; labels?: string[] } | { op: 'link'; thread_id?: string; ref?: string } | { op: 'send'; thread_id: string }) =>
+  editCard: (id: string, change: { op: 'project'; project_id: string } | { op: 'edit'; title?: string; notes?: string | null; labels?: string[] } | { op: 'link'; thread_id?: string; ref?: string } | { op: 'send'; thread_id: string }) =>
     post<{ card: InboxCardWire }>(`/api/inbox/cards/${encodeURIComponent(id)}`, change),
   /** The opened card: the card and its history, newest first. */
   card: (id: string) => get<{ card: InboxCardWire; history: InboxCardHistoryEntry[] }>(`/api/inbox/cards/${encodeURIComponent(id)}`),

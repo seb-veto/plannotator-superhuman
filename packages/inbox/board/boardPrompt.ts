@@ -24,7 +24,7 @@ Columns (where the work stands now; if it waits on me, that wins):
 - your_look: something that is not code waits on me (a sheet, options, questions).
 - building: you are writing code, or a PR is open and not ready for me.
 - your_review: code waits on me (screenshots before a merge, a green PR, a release go).
-- Icebox is agent work currently unassigned. Use op \`defer\` to set work aside and unassign it; op \`assign\` with \`assign_to\` records its agent session and returns it to Backlog without starting or messaging them. Always pass \`column\` on create.
+- Icebox is work to do later, when time or resources allow. Op \`defer\` preserves its agent; op \`assign\` changes an agent without resuming work. Op \`project\` with \`to_project_path\` changes its project; \`project_path\` names its current project. Always pass \`column\` on create.
 
 1. List the cards first (op \`list\` with \`asked_by: "anyone"\`). Never make a second card for work that has one; update it with \`move\`, \`say\` or \`link\`.
 2. Look at the work you know about: this session, this repository's open branches, worktrees and pull requests, and your own notes and plans. One card per real piece of work. Skip trivial things, and work that has shipped or stopped.

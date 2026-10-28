@@ -5238,3 +5238,6 @@ dialog.ib-dlg.ib-bi { width: min(560px, calc(100vw - 32px)); }
 /* Card labels share the Board’s neutral metadata treatment. */
 .ib-card-labels { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
 .ib-card-label { max-width:100%; overflow-wrap:anywhere; border:1px solid var(--border); border-radius:4px; padding:1px 6px; font-size:12px; font-weight:400; color:var(--muted-foreground); background:var(--secondary); }
+
+[data-card-project] label { display:block; font-size:12px; margin-bottom:6px; }
+[data-card-project] select { width:100%; padding:8px; background:var(--background); color:var(--foreground); border:1px solid var(--border); border-radius:6px; font:inherit; }

@@ -8,7 +8,7 @@
  *
  * Columns (COLUMNS.md, set d, as amended 2026-10-26): five live ones,
  * Backlog · Designing · Your look · Building · Your review, and three the
- * Board shows as links: Shipped, Icebox (agent work currently unassigned) and Dropped. A card in
+ * Board shows as links: Shipped, Icebox (work to revisit later) and Dropped. A card in
  * Backlog is not started and not sent to any agent (the column was "Asked"
  * until the owner renamed it; a stored `asked` reads as `backlog`,
  * inboxCardColumnOf). A card in the
@@ -148,7 +148,7 @@ export interface InboxCard {
   prs: InboxCardPr[];
   /**
    * The assigned agent session: where "Ask where this is" goes.
-   * Null for unassigned work, including every Icebox card. Named `agent`, not
+   * Null for unassigned work. Icebox can retain an assignment. Named `agent`, not
    * `owner`: the Board's owner is the person.
    */
   agent: InboxAuthor | null;
@@ -328,6 +328,7 @@ export type InboxCardHistoryEntry =
   | { at: string; by: InboxAuthor; kind: "renamed"; title: string }
   | { at: string; by: InboxAuthor; kind: "notes" }
   | { at: string; by: InboxAuthor; kind: "labels" }
+  | { at: string; by: InboxAuthor; kind: "project"; project_id: string }
   | { at: string; by: InboxAuthor; kind: "assigned"; to: InboxAuthor | null }
   | { at: string; by: InboxAuthor; kind: "sent"; to: InboxAuthor; thread_id: string; /** Sent into a thread the card already linked (Start), not a new one. */ existing_thread: boolean };
 
@@ -361,6 +362,7 @@ export function inboxCardHistory(snapshots: readonly InboxCard[]): InboxCardHist
     const nextAgent = card.agent?.kind === "agent" ? card.agent : null;
     const previousAgent = before.agent?.kind === "agent" ? before.agent : null;
     if ((nextAgent?.session !== previousAgent?.session || nextAgent?.host !== previousAgent?.host) && !(card.sent && (!before.sent || before.sent.at !== card.sent.at))) out.push({ at, by, kind: "assigned", to: card.agent });
+    if (card.project_id !== before.project_id) out.push({ at, by, kind: "project", project_id: card.project_id });
     if (card.title !== before.title) out.push({ at, by, kind: "renamed", title: card.title });
     if ((card.notes ?? null) !== (before.notes ?? null)) out.push({ at, by, kind: "notes" });
     if (JSON.stringify(card.labels ?? []) !== JSON.stringify(before.labels ?? [])) out.push({ at, by, kind: "labels" });

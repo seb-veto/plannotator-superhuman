@@ -4695,7 +4695,7 @@ export class InboxStore {
   /** A card as readers get it: only the linked threads that still exist, and the seq of its last write. */
   cardWire(card: InboxCard): InboxCardWire {
     const threads = card.threads.filter((id) => this.messages.get(id)?.thread_id === id);
-    return { ...card, ...(card.column === "icebox" ? { agent: null, sent: null } : {}), threads, heard_seq: this.cardHeardSeq.get(card.id) ?? 0 };
+    return { ...card, threads, heard_seq: this.cardHeardSeq.get(card.id) ?? 0 };
   }
 
   /**
@@ -4726,7 +4726,7 @@ export class InboxStore {
     for (const card of this.cards.values()) {
       if (filter.projectIds && !filter.projectIds.has(card.project_id)) continue;
       if (filter.columns && !filter.columns.has(card.column)) continue;
-      if (filter.agentSession && !(card.column !== "icebox" && card.agent?.kind === "agent" && card.agent.session === filter.agentSession)) continue;
+      if (filter.agentSession && !((card.agent?.kind === "agent" && card.agent.session === filter.agentSession) || (!card.agent && card.created_by.kind === "agent" && card.created_by.session === filter.agentSession))) continue;
       out.push(card);
     }
     return out.sort(
@@ -4896,7 +4896,7 @@ export class InboxStore {
       said,
       threads,
       prs,
-      agent: column === "icebox" ? null : target ? target.to : byAgent ? input.by : null,
+      agent: target ? target.to : byAgent && column !== "backlog" ? input.by : null,
       created_at: at,
       created_by: input.by,
       moved_at: at,
@@ -4918,7 +4918,7 @@ export class InboxStore {
    * One write to a card: any of a move (`column`), the agent's last word
    * (`say`), the person's line (`you`), a rename, more threads or PRs, and a
    * drop's `reason`. Every write counts as hearing from the card (`heard_at`).
-   * Icebox is unassigned work; restoring it returns to Backlog. Dropped
+   * Icebox is work deferred until later; it keeps its assignment. Restoring it returns to Backlog. Dropped
    * restores to its previous column. Assignment never sends a message.
    *  - an agent drops with a reason; only the person restores what they dropped;
    *  - an agent that moves a card into Your look or Your review says what the
@@ -4940,6 +4940,7 @@ export class InboxStore {
       notes?: unknown;
       labels?: unknown;
       assign_to?: { session: unknown; host?: unknown };
+      project_id?: unknown;
     },
   ): InboxCard {
     const card = this.cards.get(id);
@@ -4957,13 +4958,19 @@ export class InboxStore {
       input.notes === undefined &&
       input.labels === undefined &&
       input.assign_to === undefined &&
+      input.project_id === undefined &&
       !input.restore
     ) {
       throw new InboxError("validation_error", "Nothing to change: pass column, say, you, title, notes, assignment, thread_id or pr.");
     }
-    const assignee = input.assign_to === undefined ? undefined : this.cardAssignee(card.project_id, input.assign_to);
+    const projectId = input.project_id === undefined ? card.project_id : input.project_id;
+    if (typeof projectId !== "string" || !this.projectsById.has(projectId)) throw new InboxError("project_not_found", "project_id: choose an existing Inbox project.", { field: "project_id" });
+    if (input.project_id !== undefined && projectId === card.project_id && Object.keys(input).every(k => k === "by" || k === "project_id")) return card;
+    const keyed = projectId !== card.project_id && card.idempotency_key ? this.cardByKey(projectId, card.idempotency_key) : null;
+    if (keyed && keyed.id !== card.id) throw new InboxError("idempotency_key_reused", "This project already has a card with the same idempotency key.", { card_id: keyed.id });
+    const assignee = input.assign_to === undefined ? undefined : this.cardAssignee(projectId, input.assign_to);
     if (assignee && (card.column === "shipped" || card.column === "dropped")) throw new InboxError("validation_error", "Only active or Icebox cards can be assigned.", { field: "assign_to" });
-    let column = assignee && card.column === "icebox" ? "backlog" : card.column;
+    let column = card.column;
     if (input.restore) {
       if (byAgent && card.column === "dropped") throw new InboxError("card_person_only", "Only the person restores a dropped card.");
       if (card.column !== "icebox" && card.column !== "dropped") {
@@ -5018,6 +5025,7 @@ export class InboxStore {
           : card.aside_from;
     const next: InboxCard = {
       ...card,
+      project_id: projectId,
       title,
       column,
       you,
@@ -5032,8 +5040,8 @@ export class InboxStore {
       aside_from: asideFrom,
       notes: input.notes === undefined ? card.notes : this.cardNotes(input.notes),
       labels: input.labels === undefined ? card.labels ?? [] : this.cardLabels(input.labels),
-      agent: column === "icebox" ? null : assignee ?? (moves && card.column === "icebox" && byAgent ? input.by : card.column === "icebox" ? null : card.agent),
-      sent: column === "icebox" || assignee ? null : card.sent,
+      agent: assignee ?? (moves && column === "backlog" ? null : moves && !card.agent && byAgent && isInboxCardLiveColumn(column) ? input.by : card.agent),
+      sent: moves || assignee ? null : card.sent,
     };
     this.appendCard(next, at);
     return next;
@@ -5059,12 +5067,11 @@ export class InboxStore {
   cardHistory(id: string): InboxCardHistoryEntry[] {
     const card = this.cards.get(id);
     if (!card) return [];
-    const project = this.projectsById.get(card.project_id);
+    // Project assignment changes the destination of future snapshots, not old history.
     let text = "";
-    try {
-      if (project) text = readFileSync(join(this.projectFolder(project), CARDS_FILE), "utf8");
-    } catch {
-      // No file to read (removed under us): the card as it stands is all there is.
+    for (const project of this.projectsById.values()) {
+      try { text += readFileSync(join(this.projectFolder(project), CARDS_FILE), "utf8") + "\n"; }
+      catch { /* A project without cards contributes no history. */ }
     }
     const lines: { seq: number; card: InboxCard }[] = [];
     for (const raw of text.split("\n")) {
@@ -5135,7 +5142,7 @@ export class InboxStore {
     const card = this.card(id);
     if (!card) throw new InboxError("card_not_found", `No card ${id}.`);
     const to = this.cardAssignee(card.project_id, input);
-    if (card.column !== "icebox" && card.column !== "shipped" && card.column !== "dropped" && card.sent === null && card.agent?.kind === "agent" && card.agent.session === to.session && card.agent.host === to.host) return card;
+    if (card.column !== "shipped" && card.column !== "dropped" && card.sent === null && card.agent?.kind === "agent" && card.agent.session === to.session && card.agent.host === to.host) return card;
     return this.updateCard(id, { by: input.by, assign_to: input });
   }
 

@@ -32,16 +32,16 @@ import { shortTime } from "./inbox-mcp-read";
 import { guarded, okComplete, PROJECT_PATH_DESCRIPTION } from "./inbox-mcp-result";
 import type { InboxMcpContext } from "./inbox-mcp";
 
-export const INBOX_CARD_OPS = ["create", "move", "say", "link", "ship", "drop", "list", "edit", "defer", "assign"] as const;
+export const INBOX_CARD_OPS = ["create", "move", "say", "link", "ship", "drop", "list", "edit", "defer", "assign", "project"] as const;
 export type InboxCardOp = (typeof INBOX_CARD_OPS)[number];
 
 /** For raw MCP clients; the agent tool words its action line itself (INBOX_AGENT_ACTION_LEADS.card). */
 export const CARD_DESCRIPTION =
-  "Keep a card on the person's Board for work that outlasts this reply (a lane started, a PR opened, \"I'll send you X\"), and keep it current with one short call as the work moves. op: create (a title, or thread_id to take its subject), move (column), say (your last word, or what the person owes in `you`), link (thread_id, pr), edit (notes/title/labels), defer (Icebox, unassign), assign (assign_to session, no start/message), ship, drop (with a reason), list (your cards). A merged PR never moves a card by itself: ship it when it is merged or live.";
+  "Keep a card on the person's Board for work that outlasts this reply (a lane started, a PR opened, \"I'll send you X\"), and keep it current with one short call as the work moves. op: create (a title, or thread_id to take its subject), move (column), say (your last word, or what the person owes in `you`), link (thread_id, pr), project (to_project_path; keep conversations where they are), edit (notes/title/labels), defer (Icebox, revisit later; keep assignment), assign (assign_to session, no start/message), ship, drop (with a reason), list (your cards). A merged PR never moves a card by itself: ship it when it is merged or live.";
 
 /** Short on purpose: Pi and OpenCode send it with every request (INBOX_TOOL_COST). */
 export const CARD_COLUMN_DESCRIPTION =
-  "backlog (not started yet) · designing (not code) · your_look (a non-code thing waits on the person; give `you`) · building (code, an open PR) · your_review (code or a release waits on the person; give `you`) · shipped (merged or live) · dropped (give `reason`). Waiting on the person wins. icebox: agent work currently unassigned. asked: the old name of backlog.";
+  "backlog (not started yet) · designing (not code) · your_look (a non-code thing waits on the person; give `you`) · building (code, an open PR) · your_review (code or a release waits on the person; give `you`) · shipped (merged or live) · dropped (give `reason`). Waiting on the person wins. icebox: work to do later when time or resources allow; assignment does not resume it. asked: the old name of backlog.";
 
 /** What a `card` call gets while the Board is off (approval "inbox-board", 2026-10-26): nothing is written. */
 export const INBOX_BOARD_OFF_TEXT =
@@ -76,6 +76,7 @@ export interface CardCallInput {
   labels?: string[];
   assign_to?: string;
   assign_host?: string;
+  to_project_path?: string;
   column?: string;
   say?: string;
   you?: string;
@@ -119,6 +120,7 @@ export const INBOX_CARD_OP_FIELDS: Record<InboxCardOp, readonly (keyof CardCallI
   edit: ["card_id", "title", "notes", "labels"],
   defer: ["card_id", "say"],
   assign: ["card_id", "assign_to", "assign_host"],
+  project: ["card_id", "to_project_path"],
 };
 const OP_COMMON = new Set<keyof CardCallInput>(["op", "project_path", "agent_session", "agent_name", "agent_host"]);
 
@@ -173,7 +175,7 @@ export async function runCardCall(context: InboxMcpContext, input: CardCallInput
     const cards = store.listCards({ projectIds, columns, agentSession: askedBy === "me" ? session : null }).map((card) => store.cardWire(card));
     const whose = askedBy === "me" ? "Your" : "All";
     const head = `${whose} ${cards.length} card${cards.length === 1 ? "" : "s"} in ${project.name}${input.include_resolved ? "" : " (shipped and dropped left out)"}.`;
-    const iceboxed = cards.some((card) => card.column === "icebox") ? "\nIcebox cards are currently unassigned; assign one before starting its work." : "";
+    const iceboxed = cards.some((card) => card.column === "icebox") ? "\nIcebox is work to revisit later; assigning an agent or project does not resume it." : "";
     return {
       text: cards.length > 0 ? `${head}\n${cards.map(cardLineText).join("\n")}${iceboxed}` : head,
       structured: { project: { id: project.id, name: project.name, root: project.root }, cards, total: cards.length },
@@ -216,6 +218,14 @@ export async function runCardCall(context: InboxMcpContext, input: CardCallInput
   if (input.op === "say" && !input.say && !input.you && !input.title) throw new InboxError("validation_error", "say: your last word (or `you`, what the person owes; or `title`).", { field: "say" });
   if (input.op === "link" && !input.thread_id && !input.pr && !input.ref) throw new InboxError("validation_error", "thread_id, pr or ref: what to link.", { field: "thread_id" });
   if (input.op === "edit" && input.notes === undefined && input.labels === undefined && !input.title) throw new InboxError("validation_error", "edit: pass notes, labels or title.");
+  if (input.op === "project") {
+    if (!input.to_project_path?.trim()) throw new InboxError("validation_error", "to_project_path: the destination project folder.", { field: "to_project_path" });
+    const target = await cardScope(context, input.to_project_path);
+    if (target.unresolved) throw new InboxError("project_unresolved", "The destination project is not known yet. Nothing changed.");
+    if (!target.project) throw new InboxError("card_no_project", "The destination has no Board yet. Send one Inbox message from that project first.");
+    if (target.project.id === card.project_id) return answer("Already in this project", store.cardWire(card));
+    return answer("Changed the card's project; linked conversations stay where they are", store.cardWire(store.updateCard(card.id, { by, project_id: target.project.id })));
+  }
   if (input.op === "assign") return answer("Assigned without starting or messaging the agent", store.cardWire(store.assignCard(card.id, { by, session: input.assign_to, host: input.assign_host })));
   const column = input.op === "defer" ? "icebox" : input.op === "ship" ? "shipped" : input.op === "drop" ? "dropped" : input.column;
   const next = store.updateCard(card.id, {
@@ -248,6 +258,7 @@ export function registerInboxCardTool(server: McpServer, context: InboxMcpContex
           title: z.string().optional().describe("One line."),
           labels: z.array(z.string()).optional().describe("Create/edit: up to 12 labels, 40 characters each; [] clears them."),
           notes: z.string().nullable().optional().describe("Create/edit: card notes, up to 4000 characters; empty or null clears them."),
+          to_project_path: z.string().optional().describe("Project: destination Inbox project folder. project_path still names the card’s current project."),
           assign_to: z.string().optional().describe("Assign: an existing agent session id in this project. Does not start or message it."),
           assign_host: z.string().optional().describe("Assign: the target host, if the session id is ambiguous."),
           column: z.enum([...INBOX_CARD_COLUMNS, "asked"]).optional().describe(CARD_COLUMN_DESCRIPTION),

@@ -26,7 +26,7 @@ import { inboxHostSessionFromEnv } from "./inbox-mcp-shim";
 
 export { CARD_COMMAND_USAGE };
 
-type Op = "create" | "move" | "say" | "link" | "ship" | "drop" | "list" | "edit" | "defer" | "assign";
+type Op = "create" | "move" | "say" | "link" | "ship" | "drop" | "list" | "edit" | "defer" | "assign" | "project";
 
 /** A parsed command: the tool's arguments (without the filled ones), or why it is not one. */
 export type ParsedCardCommand =
@@ -60,11 +60,12 @@ const POSITIONAL: Record<Op, { names: readonly string[]; required: number }> = {
   edit: { names: ["card_id"], required: 1 },
   defer: { names: ["card_id"], required: 1 },
   assign: { names: ["card_id", "assign_to"], required: 2 },
+  project: { names: ["card_id", "to_project_path"], required: 2 },
 };
 
 export function parseCardCommand(argv: readonly string[]): ParsedCardCommand {
   const op = argv[0] as Op | undefined;
-  if (!op || !Object.hasOwn(POSITIONAL, op)) return { ok: false, error: op ? `Unknown card command: ${op}` : "A card command: create, move, say, link, ship, drop, list, edit, defer or assign." };
+  if (!op || !Object.hasOwn(POSITIONAL, op)) return { ok: false, error: op ? `Unknown card command: ${op}` : "A card command: create, move, say, link, ship, drop, list, edit, defer, assign or project." };
   const args: Record<string, unknown> = { op };
   const positional: string[] = [];
   let project: string | null = null;
@@ -133,6 +134,7 @@ export async function runCardCommand(argv: readonly string[], deps: CardCommandD
     return 2;
   }
   const args: Record<string, unknown> = { ...parsed.args, project_path: resolve(deps.cwd, parsed.project ?? ".") };
+  if (typeof args.to_project_path === "string") args.to_project_path = resolve(deps.cwd, args.to_project_path);
   // Inside an agent host session the card is that session's, as its plannotator_inbox tool would make it.
   const host = inboxHostSessionFromEnv(deps.env);
   if (host) {

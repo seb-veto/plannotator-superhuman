@@ -118,7 +118,7 @@ describe.if(INBOX_CARD_ACTION_ON)("plannotator card", () => {
     const created = JSON.parse(made.stdout) as { card: { id: string; agent: unknown } };
     expect(created.card).toMatchObject({ column: "backlog", said: "lane started" });
     // Outside an agent session, the card is nobody's in particular.
-    expect(created.card.agent).toMatchObject({ kind: "agent", session: null });
+    expect(created.card.agent).toBeNull();
     expect(existsSync(box.browserMarker)).toBe(false);
     const id = created.card.id;
 
@@ -170,7 +170,7 @@ describe.if(INBOX_CARD_ACTION_ON)("plannotator card", () => {
     expect((await card(box, ["defer", id])).code).toBe(0);
     const assigned = await card(box, ["assign", id, "ses_target", "--to-host", "codex", "--json"]);
     expect(assigned.code).toBe(0);
-    expect(JSON.parse(assigned.stdout).card).toMatchObject({ column: "backlog", agent: { session: "ses_target", host: "codex" }, sent: null });
+    expect(JSON.parse(assigned.stdout).card).toMatchObject({ column: "icebox", agent: { session: "ses_target", host: "codex" }, sent: null });
     expect((await card(box, ["assign", id])).code).toBe(2);
   }, 30_000);
 
@@ -246,4 +246,21 @@ describe("parseCardCommand", () => {
 test("CLI label flags preserve repeated labels and refuse contradictory clears", () => {
   expect(parseCardCommand(["edit", "crd_x", "--label", "Release", "--label", "QA"])).toMatchObject({ ok: true, args: { labels: ["Release", "QA"] } });
   for (const flags of [["--clear-labels", "--label", "QA"], ["--label", "QA", "--clear-labels"], ["--label"]]) expect(parseCardCommand(["edit", "crd_x", ...flags]).ok).toBe(false);
+});
+
+test('CLI project assignment changes an existing card without resuming deferred work', async () => {
+  const box = sandbox();
+  await seed(box);
+  const destination = join(box.root, 'second-project');
+  mkdirSync(destination, { recursive: true });
+  const registry = readInboxRegistry(box.dataDir)!;
+  const seeded = await fetch(`http://127.0.0.1:${registry.port}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'send_message', arguments: { project_path: destination, body: 'Second project' } } }) });
+  expect(seeded.status).toBe(200);
+  const made = await card(box, ['create', 'Deferred task', '--column', 'icebox', '--notes', 'Preserve', '--json']);
+  const original = JSON.parse(made.stdout).card;
+  const assigned = await card(box, ['project', original.id, destination, '--json']);
+  expect(assigned.code).toBe(0);
+  expect(JSON.parse(assigned.stdout).card).toMatchObject({ id: original.id, column: 'icebox', notes: 'Preserve' });
+  expect(JSON.parse(assigned.stdout).card.project_id).not.toBe(original.project_id);
+  expect((await card(box, ['list', '--project', destination, '--anyone', '--json'])).stdout).toContain(original.id);
 });

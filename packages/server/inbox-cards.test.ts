@@ -67,7 +67,7 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     const tool = inboxAgentTool(tools)!;
     const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
     expect(props.action!.enum).toContain("card");
-    expect(props.op!.enum).toEqual(["create", "move", "say", "link", "ship", "drop", "list", "edit", "defer", "assign"]);
+    expect(props.op!.enum).toEqual(["create", "move", "say", "link", "ship", "drop", "list", "edit", "defer", "assign", "project"]);
     expect(props.column!.enum).toContain("icebox");
     // Claude Code passes a tool description up to 2,048 characters.
     expect(tool.description.length).toBeLessThan(2048);
@@ -86,7 +86,7 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     expect(made._meta?.[INBOX_TEXT_COMPLETE_META_KEY]).toBe(true);
     const id = made.structuredContent.card.id as string;
     expect(made.structuredContent.card).toMatchObject({ title: "Hero scene timers", column: "backlog", said: "lane started", threads: [threadId] });
-    expect(made.structuredContent.card.agent).toEqual({ kind: "agent", host: "claude-code", session: "ses_a", name: "Claude Code" });
+    expect(made.structuredContent.card.agent).toBeNull();
     // The connection hands the model the text alone, and it names the card.
     expect(inboxToolResultText(made).text).toContain(id);
     expect(inboxToolResultText(made).text).not.toContain("{");
@@ -157,17 +157,17 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     for (const notes of ["x".repeat(4001), "bad\u202etext"]) expect((await card({ op: "edit", card_id: id, notes })).isError).toBe(true);
     expect(server.store.cursor()).toBe(cursor);
     const before = server.store.threadIds().length;
-    const iced = (await card({ op: "defer", card_id: id, say: "Unassigned for now" })).structuredContent.card;
-    expect(iced).toMatchObject({ column: "icebox", agent: null, sent: null, notes: "Updated\nContext" });
+    const iced = (await card({ op: "defer", card_id: id, say: "Review later" })).structuredContent.card;
+    expect(iced).toMatchObject({ column: "icebox", agent: expect.objectContaining({ session: "ses_a" }), sent: null, notes: "Updated\nContext" });
     expect(iced.refs).toHaveLength(1);
     expect((await card({ op: "list", asked_by: "anyone" })).structuredContent.cards).toContainEqual(iced);
-    expect((await card({ op: "list" })).structuredContent.cards).toEqual([]);
+    expect((await card({ op: "list" })).structuredContent.cards).toContainEqual(iced);
     const deferredCursor = server.store.cursor();
     expect((await card({ op: "assign", card_id: id, assign_to: "ses_elsewhere" })).content[0]!.text).toStartWith("agent_not_found:");
     expect((await card({ op: "assign", card_id: id })).isError).toBe(true);
     expect(server.store.cursor()).toBe(deferredCursor);
     const assigned = (await card({ op: "assign", card_id: id, assign_to: "ses_b" })).structuredContent.card;
-    expect(assigned).toMatchObject({ column: "backlog", agent: { session: "ses_b", host: "pi" }, sent: null, notes: "Updated\nContext" });
+    expect(assigned).toMatchObject({ column: "icebox", agent: { session: "ses_b", host: "pi" }, sent: null, notes: "Updated\nContext" });
     const assignedCursor = server.store.cursor();
     expect((await card({ op: "assign", card_id: id, assign_to: "ses_b" })).structuredContent.card).toEqual(assigned);
     expect(server.store.cursor()).toBe(assignedCursor);
@@ -194,8 +194,8 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
 
     const iced = await card({ op: "move", card_id: id, column: "icebox" });
     expect(iced.isError).toBeUndefined();
-    expect(iced.structuredContent.card.agent).toBeNull();
-    expect((await card({ op: "create", title: "x", column: "icebox" })).structuredContent.card.agent).toBeNull();
+    expect(iced.structuredContent.card.agent).toMatchObject({ session: "ses_a" });
+    expect((await card({ op: "create", title: "x", column: "icebox" })).structuredContent.card.agent).toMatchObject({ session: "ses_a" });
 
     const bad = await card({ op: "move", card_id: id, column: "later" });
     expect(bad.isError).toBe(true);
@@ -441,4 +441,24 @@ describe.if(!INBOX_CARD_ACTION_ON)("the card action held back", () => {
     expect(INBOX_SERVED_TOOLS).not.toContain("card");
     expect((await card({ op: "list" }).catch((error: Error) => ({ isError: true, content: [{ text: error.message }] }))).isError).toBe(true);
   });
+});
+
+test.if(INBOX_CARD_ACTION_ON)('MCP and HTTP project assignment preserve deferred state and original thread routing', async () => {
+  const { card, call, other, project, server, base } = await world();
+  const message = await call('send_message', { project_path: project, agent_session: 'ses_a', body: 'Original thread' });
+  const original = (await card({ op: 'create', title: 'Later', column: 'icebox', thread_id: message.structuredContent.thread_id, notes: 'Keep me', labels: ['Later'] })).structuredContent.card;
+  const cursor = server.store.cursor();
+  expect((await card({ op: 'project', card_id: original.id })).isError).toBe(true);
+  expect((await card({ op: 'project', card_id: original.id, to_project_path: '/missing-project' })).isError).toBe(true);
+  expect(server.store.cursor()).toBe(cursor);
+  const moved = await card({ op: 'project', card_id: original.id, to_project_path: other });
+  expect(moved.isError).toBeUndefined();
+  expect(moved.structuredContent.card).toMatchObject({ id: original.id, column: 'icebox', notes: 'Keep me', labels: ['Later'], agent: original.agent, threads: original.threads });
+  expect(moved.structuredContent.card.project_id).not.toBe(original.project_id);
+  expect((await card({ op: 'list', project_path: other, asked_by: 'anyone' })).structuredContent.cards.map((c:any) => c.id)).toContain(original.id);
+  expect(server.store.message(original.threads[0])!.project_id).toBe(original.project_id);
+  const http = await fetch(`${base}/api/inbox/cards/${original.id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'project', project_id: original.project_id }) });
+  expect(http.status).toBe(200);
+  expect((await http.json()).card).toMatchObject({ id: original.id, project_id: original.project_id, column: 'icebox' });
+  expect(server.store.changesSince(cursor).every(line => line.kind === 'card')).toBe(true);
 });

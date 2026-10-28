@@ -103,7 +103,7 @@ function scriptFetch(sessions: unknown[] = []) {
     if (refs) return json({ refs: [] });
     const one = url.pathname.match(/^\/api\/inbox\/cards\/([^/]+)$/);
     if (one && method === 'GET') return json({ card: CARDS.find((c) => c.id === one[1]), history: [{ kind: 'created', at: OLD, by: CLAUDE }] });
-    if (one && method === 'POST') return json({ card: { ...CARDS.find((c) => c.id === one[1])!, sent: body?.op === 'send' ? { at: NEW, to: CLAUDE, thread_id: body.thread_id } : null } });
+    if (one && method === 'POST') return json({ card: { ...CARDS.find((c) => c.id === one[1])!, project_id: body?.op === 'project' ? body.project_id : CARDS.find(c => c.id === one[1])!.project_id, sent: body?.op === 'send' ? { at: NEW, to: CLAUDE, thread_id: body.thread_id } : null } });
     if (url.pathname === '/api/inbox/cards') return json({ card: card('crd_new', { title: String(body?.title), agent: null, notes: (body?.notes as string) ?? null }) });
     if (/^\/api\/inbox\/threads\/[^/]+\/message$/.test(url.pathname)) return json({ message: { id: 'msg_start' }, replayed: false });
     return json({ error: 'not scripted' }, 404);
@@ -243,7 +243,8 @@ test.if(hasDom)('Icebox restore names Backlog even when its previous column was 
   const restore = panel.querySelector<HTMLButtonElement>('[data-card-restore]')!;
   expect(restore.textContent).toContain('Restore to Backlog');
   expect(restore.getAttribute('aria-description')).toContain('unassigned');
-  expect(panel.textContent).toContain('Unassigned work. Restore returns it to Backlog.');
+  expect(panel.textContent).toContain('Work to revisit');
+  expect(panel.textContent).toContain('unassigned Backlog');
   act(() => restore.click());
   await settle();
   expect(drawn.moves).toEqual([{ id: 'crd_poly', move: { op: 'restore' } }]);
@@ -426,4 +427,19 @@ test.if(hasDom)('a page that may not read marks (over the tailnet) asks nothing 
   });
   expect(calls.filter((c) => c.path === '/api/inbox/cards/marks')).toHaveLength(0);
   expect($('.ib-bcard[data-card-id="crd_vite"] [data-card-mark]')!.dataset.cardMark).toBe('unknown');
+});
+
+test.if(hasDom)('an opened card can change project without sending a conversation or moving its stage', async () => {
+  scriptFetch();
+  const drawn = draw({ openCard: 'crd_vite', onChanged: next => { if (next) drawn.rerender({ model: { serverSession: 's', cursor: 2, cards: CARDS.map(c => c.id === next.id ? next : c), dropped_unseen: 1, seen_seq: LOOK } }); }, projects: [{ id: 'prj_1', name: 'First', root: '/work/first', key: 'first', created_at: OLD, threads: 1, unread: 0 }, { id: 'prj_2', name: 'Second', root: '/work/second', key: 'second', created_at: OLD, threads: 0, unread: 0 }] });
+  await settle();
+  const picker = $('[data-card-project-field]') as HTMLSelectElement;
+  expect(picker.value).toBe('prj_1');
+  expect(picker.getAttribute('aria-describedby')).toBeTruthy();
+  await act(async () => { picker.value = 'prj_2'; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+  await settle();
+  expect(calls.filter(c => c.method === 'POST' && c.path.includes('/cards/') && c.body?.op === 'project').map(c => c.body)).toEqual([{ op: 'project', project_id: 'prj_2' }]);
+  expect(($('[data-card-project-field]') as HTMLSelectElement).value).toBe('prj_2');
+  expect(calls.some(c => c.method === 'POST' && c.path.includes('/message'))).toBe(false);
+  expect(document.activeElement?.closest('[data-card-panel]') || $('[data-card-panel]')).not.toBeNull();
 });

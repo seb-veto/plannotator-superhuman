@@ -271,6 +271,8 @@ export function historyWords(entry: InboxCardHistoryEntry): { before: string; bo
       return { before: 'Renamed by ', bold: null, after: by, quote: `“${entry.title}”` };
     case 'assigned':
       return entry.to ? { before: 'Assigned to ', bold: inboxAgentName(entry.to), after: ` by ${by}`, quote: null } : { before: `Unassigned by ${by}`, bold: null, after: '', quote: null };
+    case 'project':
+      return { before: `Project changed by ${by}`, bold: null, after: '', quote: null };
     case 'labels':
       return { before: `Labels edited by ${by}`, bold: null, after: '', quote: null };
     case 'notes':

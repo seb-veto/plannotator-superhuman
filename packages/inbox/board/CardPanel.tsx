@@ -22,6 +22,8 @@ import { Tip } from '../components/Tip';
 import { OnceButton } from './OnceButton';
 import { RefMarkIcon } from './RefMark';
 import { CardLabels } from './CardLabels';
+import { CardProject } from './CardProject';
+import type { ProjectFolder } from '../api';
 import { cardAge, cardFoot, columnChoices, historyWords, refState, sentTo } from './model';
 
 export interface CardPanelProps {
@@ -30,6 +32,8 @@ export interface CardPanelProps {
   /** The card's links resolved (null while they are read; a failure keeps the reference quiet). */
   refs: { ref: InboxCardRef; result: ForgeRefCardResult }[] | null;
   projectName: string;
+  projects: readonly ProjectFolder[];
+  onProject: (projectId: string) => Promise<string | null>;
   /** The agent's session now: working, idle, ended (not live), or unknown (null: no agent, or not read yet). */
   state: 'working' | 'idle' | 'ended' | null;
   /** Whether "Ask where this is" has a live session to go to (the card's agent, else one in its project). */
@@ -166,6 +170,7 @@ export function CardPanel(props: CardPanelProps) {
             {card.dropped.reason ? `: ${card.dropped.reason}` : ''}
           </p>
         )}
+        <CardProject key={`project-${card.id}`} card={card} projects={props.projects} onSave={props.onProject} />
         <CardLabels key={card.id} card={card} onSave={props.onLabels} />
         <Notes card={card} onSave={props.onNotes} />
         {card.threads.length > 0 && (
@@ -295,7 +300,7 @@ export function CardPanel(props: CardPanelProps) {
           )}
           <span className="ib-bsp" />
           {foot.icebox && (
-            <button type="button" className="ib-btn ib-ghost" onClick={props.onIcebox} data-card-icebox="" title="Defer and clear assignment" aria-description="Move to Icebox and clear assignment. Press Enter or Space.">
+            <button type="button" className="ib-btn ib-ghost" onClick={props.onIcebox} data-card-icebox="" title="Do later" aria-description="Keep in Icebox to revisit later. Assignment is kept. Press Enter or Space.">
               <Icon name="snowflake" size={15} />
               Icebox
             </button>
@@ -308,7 +313,7 @@ export function CardPanel(props: CardPanelProps) {
           )}
         </div>
       )}
-      {card.column === 'icebox' && <p className="ib-crdp-meta">Unassigned work. Restore returns it to Backlog. Use Enter or Space on Restore.</p>}
+      {card.column === 'icebox' && <p className="ib-crdp-meta">Work to revisit when time or resources allow. Restore returns it to unassigned Backlog. Use Enter or Space on Restore.</p>}
       <div className="ib-sr" aria-live="polite">
         {said}
       </div>
