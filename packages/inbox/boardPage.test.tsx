@@ -212,6 +212,29 @@ test.if(hasDom)('the agents’ drops show above the lanes with their reason; Got
   expect(drawn.moves).toEqual([{ id: 'crd_sqlite', move: { op: 'restore' } }]);
 });
 
+test.if(hasDom)('card labels render and can be saved or cancelled without closing the card', async () => {
+  scriptFetch();
+  const labels = ['Release'];
+  const drawn = draw({ openCard: 'crd_vite', model: { serverSession: 's', cursor: 1, cards: CARDS.map(c => c.id === 'crd_vite' ? { ...c, labels } : c), dropped_unseen: 1, seen_seq: LOOK } });
+  await settle();
+  const panel = $('[data-card-panel="crd_vite"]')!;
+  expect(panel.querySelector('[data-card-labels]')!.textContent).toContain('Release');
+  act(() => panel.querySelector<HTMLButtonElement>('[data-card-labels-edit]')!.click());
+  const field = panel.querySelector<HTMLTextAreaElement>('[data-card-labels-field]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'Release\nQA');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => panel.querySelector<HTMLButtonElement>('[data-card-labels-save]')!.click());
+  await settle();
+  expect(calls.find(c => c.body?.op === 'edit' && c.body?.labels)?.body?.labels).toEqual(['Release', 'QA']);
+  expect(drawn.changed).toBe(1);
+  act(() => panel.querySelector<HTMLButtonElement>('[data-card-labels-edit]')!.click());
+  act(() => panel.querySelector('[data-card-labels-field]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  expect(panel.querySelector('[data-card-labels-field]')).toBeNull();
+  expect(drawn.opened).toEqual([]);
+});
+
 test.if(hasDom)('Icebox restore names Backlog even when its previous column was Building', async () => {
   scriptFetch();
   const drawn = draw({ openCard: 'crd_poly' });

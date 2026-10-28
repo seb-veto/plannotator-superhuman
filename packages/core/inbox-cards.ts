@@ -171,6 +171,8 @@ export interface InboxCard {
    * notes are the message. Null on a card written before notes existed.
    */
   notes: string | null;
+  /** Optional on old snapshots; an empty list means no labels. */
+  labels?: string[];
   /**
    * The person sent the card to an agent (step 2): the session it went to,
    * as a new thread the card links. The card is that agent's from then on
@@ -267,12 +269,29 @@ export interface InboxCardSent {
 
 /** The longest card notes, in characters. */
 export const INBOX_CARD_NOTES_MAX = 4000;
+export const INBOX_CARD_LABELS_MAX = 12;
+export const INBOX_CARD_LABEL_MAX = 40;
+
+export function normalizeInboxCardLabels(value: unknown): { labels: string[] } | { error: string } {
+  if (!Array.isArray(value)) return { error: "labels: a list of label names; [] clears them." };
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== "string" || /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(raw)) return { error: "labels: one line per label, with no control or bidi characters." };
+    const label = raw.replace(/\s+/g, " ").trim();
+    if (!label || [...label].length > INBOX_CARD_LABEL_MAX) return { error: `labels: each name must be 1–${INBOX_CARD_LABEL_MAX} characters.` };
+    const key = label.toLowerCase();
+    if (!seen.has(key)) { labels.push(label); seen.add(key); }
+    if (labels.length > INBOX_CARD_LABELS_MAX) return { error: `labels: at most ${INBOX_CARD_LABELS_MAX} per card.` };
+  }
+  return { labels };
+}
 
 /** A stored card with the fields added since step 1 filled in (`notes`, `sent`) and its columns read (`asked` → `backlog`). */
 export function readInboxCard(card: InboxCard): InboxCard {
   const read = readInboxCardColumns(card);
-  if (read.notes !== undefined && read.sent !== undefined && read.refs !== undefined) return read;
-  return { ...read, notes: read.notes ?? null, sent: read.sent ?? null, refs: inboxCardRefsOf(read) };
+  if (read.notes !== undefined && read.sent !== undefined && read.refs !== undefined && read.labels !== undefined) return read;
+  return { ...read, notes: read.notes ?? null, sent: read.sent ?? null, refs: inboxCardRefsOf(read), labels: read.labels ?? [] };
 }
 
 /**
@@ -308,6 +327,7 @@ export type InboxCardHistoryEntry =
   | { at: string; by: InboxAuthor; kind: "linked_ref"; ref: string; ref_kind: string }
   | { at: string; by: InboxAuthor; kind: "renamed"; title: string }
   | { at: string; by: InboxAuthor; kind: "notes" }
+  | { at: string; by: InboxAuthor; kind: "labels" }
   | { at: string; by: InboxAuthor; kind: "assigned"; to: InboxAuthor | null }
   | { at: string; by: InboxAuthor; kind: "sent"; to: InboxAuthor; thread_id: string; /** Sent into a thread the card already linked (Start), not a new one. */ existing_thread: boolean };
 
@@ -343,6 +363,7 @@ export function inboxCardHistory(snapshots: readonly InboxCard[]): InboxCardHist
     if ((nextAgent?.session !== previousAgent?.session || nextAgent?.host !== previousAgent?.host) && !(card.sent && (!before.sent || before.sent.at !== card.sent.at))) out.push({ at, by, kind: "assigned", to: card.agent });
     if (card.title !== before.title) out.push({ at, by, kind: "renamed", title: card.title });
     if ((card.notes ?? null) !== (before.notes ?? null)) out.push({ at, by, kind: "notes" });
+    if (JSON.stringify(card.labels ?? []) !== JSON.stringify(before.labels ?? [])) out.push({ at, by, kind: "labels" });
     if (card.column !== before.column) {
       if (card.column === "dropped") out.push({ at, by, kind: "dropped", reason: card.dropped?.reason ?? null });
       else if (before.column === "icebox" || before.column === "dropped") {

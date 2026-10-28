@@ -37,7 +37,7 @@ export type InboxCardOp = (typeof INBOX_CARD_OPS)[number];
 
 /** For raw MCP clients; the agent tool words its action line itself (INBOX_AGENT_ACTION_LEADS.card). */
 export const CARD_DESCRIPTION =
-  "Keep a card on the person's Board for work that outlasts this reply (a lane started, a PR opened, \"I'll send you X\"), and keep it current with one short call as the work moves. op: create (a title, or thread_id to take its subject), move (column), say (your last word, or what the person owes in `you`), link (thread_id, pr), edit (notes/title), defer (Icebox, unassign), assign (assign_to session, no start/message), ship, drop (with a reason), list (your cards). A merged PR never moves a card by itself: ship it when it is merged or live.";
+  "Keep a card on the person's Board for work that outlasts this reply (a lane started, a PR opened, \"I'll send you X\"), and keep it current with one short call as the work moves. op: create (a title, or thread_id to take its subject), move (column), say (your last word, or what the person owes in `you`), link (thread_id, pr), edit (notes/title/labels), defer (Icebox, unassign), assign (assign_to session, no start/message), ship, drop (with a reason), list (your cards). A merged PR never moves a card by itself: ship it when it is merged or live.";
 
 /** Short on purpose: Pi and OpenCode send it with every request (INBOX_TOOL_COST). */
 export const CARD_COLUMN_DESCRIPTION =
@@ -61,6 +61,7 @@ export function cardLineText(card: InboxCardWire): string {
   if (card.threads.length > 0) parts.push(`threads ${card.threads.join(", ")}`);
   const refs = inboxCardRefsOf(card);
   if (refs.length > 0) parts.push(`links ${refs.map((ref) => (ref.kind === "pr" ? ref.ref : `${ref.ref} (${ref.kind})`)).join(", ")}`);
+  if (card.labels?.length) parts.push(`labels ${JSON.stringify(card.labels)}`);
   if (card.notes) parts.push(`notes ${JSON.stringify(card.notes.length > 300 ? `${card.notes.slice(0, 300)}…` : card.notes)}`);
   if (card.agent?.kind === "agent") parts.push(`agent ${inboxAgentName(card.agent)}${card.agent.session ? ` (${card.agent.session})` : ""}`);
   return parts.join(" · ");
@@ -72,6 +73,7 @@ export interface CardCallInput {
   card_id?: string;
   title?: string;
   notes?: string | null;
+  labels?: string[];
   assign_to?: string;
   assign_host?: string;
   column?: string;
@@ -107,14 +109,14 @@ function cardInScope(store: InboxStore, id: string | undefined, projectIds: Read
 
 /** Fields each op takes; any other is refused by name (a column on a say would otherwise be dropped silently). */
 export const INBOX_CARD_OP_FIELDS: Record<InboxCardOp, readonly (keyof CardCallInput)[]> = {
-  create: ["title", "column", "say", "you", "thread_id", "pr", "ref", "idempotency_key", "notes"],
+  create: ["title", "column", "say", "you", "thread_id", "pr", "ref", "idempotency_key", "notes", "labels"],
   move: ["card_id", "column", "say", "you", "thread_id", "pr", "ref", "reason"],
   say: ["card_id", "say", "you", "title"],
   link: ["card_id", "thread_id", "pr", "ref", "say"],
   ship: ["card_id", "say", "pr", "ref", "thread_id"],
   drop: ["card_id", "reason", "say"],
   list: ["asked_by", "include_resolved"],
-  edit: ["card_id", "title", "notes"],
+  edit: ["card_id", "title", "notes", "labels"],
   defer: ["card_id", "say"],
   assign: ["card_id", "assign_to", "assign_host"],
 };
@@ -197,6 +199,7 @@ export async function runCardCall(context: InboxMcpContext, input: CardCallInput
       by,
       title: input.title,
       notes: input.notes,
+      labels: input.labels,
       column: input.column,
       say: input.say,
       you: input.you,
@@ -212,7 +215,7 @@ export async function runCardCall(context: InboxMcpContext, input: CardCallInput
   if (input.op === "move" && !input.column) throw new InboxError("validation_error", "column: where the card goes (move).", { field: "column" });
   if (input.op === "say" && !input.say && !input.you && !input.title) throw new InboxError("validation_error", "say: your last word (or `you`, what the person owes; or `title`).", { field: "say" });
   if (input.op === "link" && !input.thread_id && !input.pr && !input.ref) throw new InboxError("validation_error", "thread_id, pr or ref: what to link.", { field: "thread_id" });
-  if (input.op === "edit" && input.notes === undefined && !input.title) throw new InboxError("validation_error", "edit: pass notes or title.");
+  if (input.op === "edit" && input.notes === undefined && input.labels === undefined && !input.title) throw new InboxError("validation_error", "edit: pass notes, labels or title.");
   if (input.op === "assign") return answer("Assigned without starting or messaging the agent", store.cardWire(store.assignCard(card.id, { by, session: input.assign_to, host: input.assign_host })));
   const column = input.op === "defer" ? "icebox" : input.op === "ship" ? "shipped" : input.op === "drop" ? "dropped" : input.column;
   const next = store.updateCard(card.id, {
@@ -222,6 +225,7 @@ export async function runCardCall(context: InboxMcpContext, input: CardCallInput
     you: input.you,
     title: input.title,
     notes: input.notes,
+    labels: input.labels,
     threads: input.thread_id ? [input.thread_id] : [],
     prs: input.pr ? [input.pr] : [],
     refs: input.ref ? [input.ref] : [],
@@ -242,6 +246,7 @@ export function registerInboxCardTool(server: McpServer, context: InboxMcpContex
           op: z.enum(INBOX_CARD_OPS),
           card_id: z.string().optional().describe("The card (crd_…); not for create or list."),
           title: z.string().optional().describe("One line."),
+          labels: z.array(z.string()).optional().describe("Create/edit: up to 12 labels, 40 characters each; [] clears them."),
           notes: z.string().nullable().optional().describe("Create/edit: card notes, up to 4000 characters; empty or null clears them."),
           assign_to: z.string().optional().describe("Assign: an existing agent session id in this project. Does not start or message it."),
           assign_host: z.string().optional().describe("Assign: the target host, if the session id is ambiguous."),

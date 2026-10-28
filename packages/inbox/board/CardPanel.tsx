@@ -21,6 +21,7 @@ import { AuthorMark, Icon } from '../icons';
 import { Tip } from '../components/Tip';
 import { OnceButton } from './OnceButton';
 import { RefMarkIcon } from './RefMark';
+import { CardLabels } from './CardLabels';
 import { cardAge, cardFoot, columnChoices, historyWords, refState, sentTo } from './model';
 
 export interface CardPanelProps {
@@ -48,6 +49,7 @@ export interface CardPanelProps {
   /** Start: tell the card's agent (or a live session in its project) to begin; an error to say, or null. */
   onStart: () => Promise<string | null>;
   onAsk: () => Promise<string | null>;
+  onLabels: (labels: string[]) => Promise<string | null>;
   onNotes: (notes: string | null) => Promise<boolean>;
   onLink: (ref: string) => Promise<string | null>;
   onOpenThread: (threadId: string) => void;
@@ -164,6 +166,7 @@ export function CardPanel(props: CardPanelProps) {
             {card.dropped.reason ? `: ${card.dropped.reason}` : ''}
           </p>
         )}
+        <CardLabels key={card.id} card={card} onSave={props.onLabels} />
         <Notes card={card} onSave={props.onNotes} />
         {card.threads.length > 0 && (
           <section className="ib-crdp-sec" aria-label="Threads">

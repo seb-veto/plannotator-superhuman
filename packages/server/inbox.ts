@@ -1002,7 +1002,7 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
         return store.updateCard(id, { by, restore: true });
       case "edit":
         // The opened card: the title and the notes (either; notes "" or null clears them).
-        return store.updateCard(id, { by, title: body.title === undefined ? undefined : body.title, notes: body.notes === undefined ? undefined : body.notes ?? "" });
+        return store.updateCard(id, { by, title: body.title === undefined ? undefined : body.title, notes: body.notes === undefined ? undefined : body.notes ?? "", labels: body.labels });
       case "link":
         // A thread or a reference (issue, PR) the person links from the opened card.
         return store.updateCard(id, { by, threads: body.thread_id ? [body.thread_id] : [], refs: body.ref ? [body.ref] : [] });
@@ -2628,6 +2628,7 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
           title: body.title,
           column,
           notes: body.notes,
+          labels: body.labels,
           refs,
           idempotency_key: body.idempotency_key,
           send_thread_id: body.thread_id ?? undefined,

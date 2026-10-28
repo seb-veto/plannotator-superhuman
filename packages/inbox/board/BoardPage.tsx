@@ -15,6 +15,7 @@ import { OnceButton } from './OnceButton';
 import { RefMark, markLabel } from './RefMark';
 import { useCardMarks } from './useCardMarks';
 import { NewCardDialog, type NewCardInput } from './NewCardDialog';
+import { CardLabelChips } from './CardLabels';
 import { BoardIntro, useCopyBoardPrompt } from './BoardIntro';
 import {
   agentState,
@@ -651,7 +652,7 @@ function BoardCard({
   const delivery = sent && card.sent ? (rowOf(card.sent.thread_id)?.delivery ?? null) : null;
   const age = cardAge(card.heard_at, now);
   const mark = markOf(card);
-  const label = cardLabel(card, unread, now) + (sent ? `. Sent to ${sent}` : '') + (mark ? `. ${markLabel(mark)}` : '');
+  const label = cardLabel(card, unread, now) + (card.labels?.length ? `. Labels: ${card.labels.join(', ')}` : '') + (sent ? `. Sent to ${sent}` : '') + (mark ? `. ${markLabel(mark)}` : '');
   // Nothing to say under the title (a shipped card whose "You:" went with the move, a card nobody spoke
   // on): one line, the age beside the title, never an empty second line.
   const oneLine = !sent && !line && !mark;
@@ -716,6 +717,7 @@ function BoardCard({
             {ageTip}
           </span>
         )}
+        <CardLabelChips labels={card.labels} />
       </button>
     </li>
   );
@@ -1082,6 +1084,14 @@ function OpenedCard({
           return null;
         } catch (cause) {
           return cause instanceof Error ? cause.message : 'Nothing was sent.';
+        }
+      }}
+      onLabels={async (labels) => {
+        try {
+          onChanged((await inboxApi.editCard(card.id, { op: 'edit', labels })).card);
+          return null;
+        } catch (cause) {
+          return cause instanceof Error ? cause.message : 'Labels were not saved. Try again.';
         }
       }}
       onNotes={async (notes) => {

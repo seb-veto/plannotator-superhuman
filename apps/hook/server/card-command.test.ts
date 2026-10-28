@@ -158,10 +158,12 @@ describe.if(INBOX_CARD_ACTION_ON)("plannotator card", () => {
     const registry = readInboxRegistry(box.dataDir)!;
     const seeded = await fetch(`http://127.0.0.1:${registry.port}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_message", arguments: { project_path: box.project, agent_session: "ses_target", agent_host: "codex", body: "Assignment target" } } }) });
     expect(seeded.status).toBe(200);
-    const made = await card(box, ["create", "CLI parity", "--notes", "First\nSecond", "--json"]);
+    const made = await card(box, ["create", "CLI parity", "--notes", "First\nSecond", "--label", "QA", "--label", "Release", "--json"]);
     expect(made.code).toBe(0);
     const id = JSON.parse(made.stdout).card.id;
     expect(JSON.parse(made.stdout).card.notes).toBe("First\nSecond");
+    expect(JSON.parse(made.stdout).card.labels).toEqual(["QA", "Release"]);
+    expect(JSON.parse((await card(box, ["edit", id, "--clear-labels", "--json"])).stdout).card.labels).toEqual([]);
     const edit = await card(box, ["edit", id, "--notes", "", "--json"]);
     expect(edit.code).toBe(0);
     expect(JSON.parse(edit.stdout).card.notes).toBeNull();
@@ -239,4 +241,9 @@ describe("parseCardCommand", () => {
     expect(parseCardCommand(["create"])).toMatchObject({ ok: false });
     expect(parseCardCommand(["list", "--all"])).toMatchObject({ ok: true, args: { op: "list", include_resolved: true } });
   });
+});
+
+test("CLI label flags preserve repeated labels and refuse contradictory clears", () => {
+  expect(parseCardCommand(["edit", "crd_x", "--label", "Release", "--label", "QA"])).toMatchObject({ ok: true, args: { labels: ["Release", "QA"] } });
+  for (const flags of [["--clear-labels", "--label", "QA"], ["--label", "QA", "--clear-labels"], ["--label"]]) expect(parseCardCommand(["edit", "crd_x", ...flags]).ok).toBe(false);
 });

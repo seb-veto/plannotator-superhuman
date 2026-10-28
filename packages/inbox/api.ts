@@ -840,13 +840,13 @@ export const inboxApi = {
    * The person's New card: a title, notes and links, in Backlog or the Icebox; or sent: `thread_id` is
    * the thread compose's Send just started for it (the card lands in that thread's project).
    */
-  createCard: (input: { project?: string | null; title: string; notes?: string | null; column?: 'backlog' | 'icebox'; refs?: string[]; thread_id?: string; idempotency_key?: string }) =>
+  createCard: (input: { project?: string | null; title: string; notes?: string | null; labels?: string[]; column?: 'backlog' | 'icebox'; refs?: string[]; thread_id?: string; idempotency_key?: string }) =>
     post<{ card: InboxCardWire; replayed: boolean }>('/api/inbox/cards', { ...input }),
   /** The person's move: `move` to a column, `icebox`, `drop` (reason optional), `restore`. */
   moveCard: (id: string, change: { op: 'move'; column: InboxCardColumn } | { op: 'icebox' } | { op: 'drop'; reason?: string | null } | { op: 'restore' }) =>
     post<{ card: InboxCardWire }>(`/api/inbox/cards/${encodeURIComponent(id)}`, change),
   /** The opened card's edits: title, notes; a link (a thread, an issue or PR); sent to an agent (the thread just started). */
-  editCard: (id: string, change: { op: 'edit'; title?: string; notes?: string | null } | { op: 'link'; thread_id?: string; ref?: string } | { op: 'send'; thread_id: string }) =>
+  editCard: (id: string, change: { op: 'edit'; title?: string; notes?: string | null; labels?: string[] } | { op: 'link'; thread_id?: string; ref?: string } | { op: 'send'; thread_id: string }) =>
     post<{ card: InboxCardWire }>(`/api/inbox/cards/${encodeURIComponent(id)}`, change),
   /** The opened card: the card and its history, newest first. */
   card: (id: string) => get<{ card: InboxCardWire; history: InboxCardHistoryEntry[] }>(`/api/inbox/cards/${encodeURIComponent(id)}`),

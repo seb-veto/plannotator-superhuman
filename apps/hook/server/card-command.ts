@@ -69,9 +69,20 @@ export function parseCardCommand(argv: readonly string[]): ParsedCardCommand {
   const positional: string[] = [];
   let project: string | null = null;
   let json = false;
+  let clearLabels = false;
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--json") json = true;
+    if (arg === "--label") {
+      const value = argv[++i];
+      if (value === undefined) return { ok: false, error: "--label takes a value." };
+      if (clearLabels) return { ok: false, error: "Do not combine --label and --clear-labels." };
+      args.labels ??= [];
+      (args.labels as string[]).push(value);
+    } else if (arg === "--clear-labels") {
+      if (args.labels !== undefined) return { ok: false, error: "Do not combine --label and --clear-labels." };
+      args.labels = [];
+      clearLabels = true;
+    } else if (arg === "--json") json = true;
     else if (arg === "--all" && op === "list") args.include_resolved = true;
     else if (arg === "--anyone" && op === "list") args.asked_by = "anyone";
     else if (arg === "--mine" && op === "list") args.asked_by = "me";

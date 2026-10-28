@@ -136,6 +136,25 @@ describe("cards: create", () => {
   });
 });
 
+test("labels persist across edits, deferral, assignment and reopening; old cards default to none", () => {
+  const { store, project, dir } = world();
+  const card = store.createCard({ project_id: project.id, by: AGENT, title: "Labelled work", labels: ["  Release ", "release", "Design"] }).card;
+  expect(card.labels).toEqual(["Release", "Design"]);
+  store.updateCard(card.id, { by: AGENT, column: "icebox" });
+  expect(InboxStore.open(dir).card(card.id)!.labels).toEqual(["Release", "Design"]);
+  store.updateCard(card.id, { by: PERSON, labels: ["QA"] });
+  expect(store.cardHistory(card.id)).toContainEqual(expect.objectContaining({ kind: "labels", by: PERSON }));
+  const cursor = store.cursor();
+  expect(refusal(() => store.updateCard(card.id, { by: AGENT, labels: ["bad\nlabel"] }))).toBe("validation_error");
+  expect(store.cursor()).toBe(cursor);
+  store.updateCard(card.id, { by: PERSON, labels: [] });
+  expect(InboxStore.open(dir).card(card.id)!.labels).toEqual([]);
+  const file = join(dir, "inbox", "projects", project.key, "cards.jsonl");
+  const legacy = readFileSync(file, "utf8").split("\n").filter(Boolean).map(line => { const record = JSON.parse(line); delete record.record.labels; return JSON.stringify(record); }).join("\n") + "\n";
+  writeFileSync(file, legacy);
+  expect(InboxStore.open(dir).card(card.id)!.labels).toEqual([]);
+});
+
 describe("cards: who moves a card (COLUMNS.md, set d)", () => {
   test("an agent moves its work through the live columns, ships it, and a re-report goes back to Backlog", () => {
     const { store, project, advance } = world();

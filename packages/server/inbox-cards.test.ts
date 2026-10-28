@@ -126,6 +126,21 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     expect((await card({ op: "list", agent_session: "ses_b", asked_by: "anyone" })).structuredContent.total).toBe(1);
   });
 
+  test("labels are editable through MCP and HTTP and validation writes nothing", async () => {
+    const { card, base, server } = await world();
+    const made = await card({ op: "create", title: "Labels", labels: ["Release", " release "] });
+    const id = made.structuredContent.card.id;
+    expect(made.structuredContent.card.labels).toEqual(["Release"]);
+    expect(made.content[0]!.text).toContain('labels ["Release"]');
+    const cursor = server.store.cursor();
+    expect((await card({ op: "edit", card_id: id, labels: ["x".repeat(41)] })).isError).toBe(true);
+    expect(server.store.cursor()).toBe(cursor);
+    const changed = await fetch(`${base}/api/inbox/cards/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "edit", labels: ["QA", "Agent work"] }) });
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).card.labels).toEqual(["QA", "Agent work"]);
+    expect((await card({ op: "edit", card_id: id, labels: [] })).structuredContent.card.labels).toEqual([]);
+  });
+
   test("notes, defer and assignment work through MCP and HTTP without sending messages", async () => {
     const { card, call, base, server, project, other } = await world();
     await call("send_message", { project_path: project, agent_session: "ses_b", agent_host: "pi", agent_name: "Pi", body: "Available for assignment" });

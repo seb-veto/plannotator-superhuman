@@ -246,6 +246,7 @@ export const CARD_COMMAND_USAGE = [
   "  plannotator card defer <crd_id> [--say <text>]",
   "  plannotator card assign <crd_id> <agent_session> [--to-host <host>]",
   "  card create also takes --notes <text>; edit --notes \"\" clears notes.",
+  "  create/edit --label <name> sets labels (repeat for several); edit --clear-labels removes all.",
   "",
   "Every command takes [--project <folder>] (default: this folder) and [--json].",
   `Columns: ${INBOX_CARD_COLUMNS.join(", ")} (icebox is currently unassigned work).`,

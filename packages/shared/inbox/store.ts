@@ -139,6 +139,7 @@ import {
   isInboxCardSeenOnlyChange,
   isInboxCardSentWaiting,
   normalizeInboxCardNotes,
+  normalizeInboxCardLabels,
   inboxCardHistory,
   inboxCardRefsOf,
   type InboxCardRef,
@@ -4838,6 +4839,7 @@ export class InboxStore {
     refs?: readonly unknown[];
     idempotency_key?: unknown;
     notes?: unknown;
+    labels?: unknown;
     /** The person's message that sends the new card to an agent: checked before the card is written, one line for both. */
     send_thread_id?: unknown;
   }): { card: InboxCard; replayed: boolean } {
@@ -4904,6 +4906,7 @@ export class InboxStore {
       aside_from: null,
       idempotency_key: key,
       notes: this.cardNotes(input.notes),
+      labels: input.labels === undefined ? [] : this.cardLabels(input.labels),
       sent: target ? { at, to: target.to, thread_id: target.thread } : null,
       refs,
     };
@@ -4935,6 +4938,7 @@ export class InboxStore {
       reason?: unknown;
       restore?: boolean;
       notes?: unknown;
+      labels?: unknown;
       assign_to?: { session: unknown; host?: unknown };
     },
   ): InboxCard {
@@ -4951,6 +4955,7 @@ export class InboxStore {
       !(input.prs && input.prs.length > 0) &&
       !(input.refs && input.refs.length > 0) &&
       input.notes === undefined &&
+      input.labels === undefined &&
       input.assign_to === undefined &&
       !input.restore
     ) {
@@ -5026,11 +5031,18 @@ export class InboxStore {
       dropped,
       aside_from: asideFrom,
       notes: input.notes === undefined ? card.notes : this.cardNotes(input.notes),
+      labels: input.labels === undefined ? card.labels ?? [] : this.cardLabels(input.labels),
       agent: column === "icebox" ? null : assignee ?? (moves && card.column === "icebox" && byAgent ? input.by : card.column === "icebox" ? null : card.agent),
       sent: column === "icebox" || assignee ? null : card.sent,
     };
     this.appendCard(next, at);
     return next;
+  }
+
+  private cardLabels(value: unknown): string[] {
+    const result = normalizeInboxCardLabels(value);
+    if ("error" in result) throw new InboxError("validation_error", result.error, { field: "labels" });
+    return result.labels;
   }
 
   private cardNotes(value: unknown): string | null {

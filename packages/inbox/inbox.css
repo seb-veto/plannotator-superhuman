@@ -5234,3 +5234,7 @@ dialog.ib-dlg.ib-bi { width: min(560px, calc(100vw - 32px)); }
   .pn-inbox .pm-disc, .pn-inbox .pm-fold { min-height: 44px; }
   .pm-ag .ib-desc a { display: inline-flex; align-items: center; min-height: 44px; margin: -12px 0; }
 }
+
+/* Card labels share the Board’s neutral metadata treatment. */
+.ib-card-labels { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+.ib-card-label { max-width:100%; overflow-wrap:anywhere; border:1px solid var(--border); border-radius:4px; padding:1px 6px; font-size:12px; font-weight:400; color:var(--muted-foreground); background:var(--secondary); }
