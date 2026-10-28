@@ -9,13 +9,14 @@ import { createShortcutRegistry, type ShortcutSurface } from '@plannotator/ui/sh
 import { inboxSearchShortcuts } from '../search/searchShortcut';
 import { inboxFileViewerShortcuts } from './fileViewer.shortcuts';
 import { inboxThreadShortcuts } from './thread.shortcuts';
+import { superhumanActionShortcuts, superhumanNavigationShortcuts, superhumanSelectionShortcuts, superhumanMessageShortcuts } from './superhuman.shortcuts';
 
 export { inboxFileViewerShortcuts } from './fileViewer.shortcuts';
 export { inboxThreadShortcuts } from './thread.shortcuts';
 export { inboxSearchShortcuts } from '../search/searchShortcut';
 export * from './guards';
 
-export const inboxShortcutRegistry = createShortcutRegistry([inboxSearchShortcuts, inboxThreadShortcuts, inboxFileViewerShortcuts]);
+export const inboxShortcutRegistry = createShortcutRegistry([inboxSearchShortcuts, inboxThreadShortcuts, inboxFileViewerShortcuts, superhumanNavigationShortcuts, superhumanActionShortcuts, superhumanSelectionShortcuts, superhumanMessageShortcuts]);
 
 export const inboxSurface: ShortcutSurface = {
   slug: 'inbox',

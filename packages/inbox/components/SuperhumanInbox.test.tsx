@@ -35,3 +35,11 @@ test.skipIf(typeof document==='undefined')('archived conversations in All mail c
  click(el.querySelector('[aria-label="Select One"]')!);
  expect((el.querySelector('[aria-label="Archive selected conversations"]') as HTMLButtonElement).disabled).toBe(true);
 });
+
+test.skipIf(typeof document==='undefined')('X selects the focused conversation; Shift-J extends and Escape clears',async()=>{
+ const el=render();const first=el.querySelector('[data-thread-id]') as HTMLButtonElement;act(()=>first.focus());
+ const press=(key:string,shiftKey=false)=>act(()=>first.dispatchEvent(new KeyboardEvent('keydown',{key,shiftKey,bubbles:true,cancelable:true})));
+ press('x');expect(el.querySelectorAll('.gm-checked')).toHaveLength(1);
+ press('j',true);expect(el.querySelectorAll('.gm-checked')).toHaveLength(2);
+ press('Escape');expect(el.querySelectorAll('.gm-checked')).toHaveLength(0);
+});

@@ -1,3 +1,5 @@
+import { useShortcutScope } from '@plannotator/ui/shortcuts';
+import { superhumanMessageShortcuts, superhumanKeyAllowed } from '../shortcuts/superhuman.shortcuts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { capturePlace, holdPlace, openerOf, opensFile, parsePlaceLayout, placeInView, placeLayoutKey, placeSelector, placeShown, restorePlace, type ThreadPlace } from '../threadPlace';
@@ -2069,50 +2071,27 @@ export function ThreadPane({ notice, thread, sent, onQuestions, onChanged, draft
     target.querySelector<HTMLElement>('[data-fold-head]')?.focus({ preventScroll: true });
   }, [passedIds]);
 
-  // The visible Inbox list handles j / k first; otherwise they move between messages (and the middle fold).
-  // n goes to the first
-  // new one; Enter and Space are the buttons' own. Never while typing, and
-  // never while the Artifacts grid stands in for the messages.
-  useEffect(() => {
-    if (one || artifactsOn) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
-      if (event.key !== 'j' && event.key !== 'k' && event.key !== 'n') return;
-      // Words selected in a message: its toolbar takes the letters (a comment starting with them).
-      if (selectionToolbarShowing()) return;
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target) {
-        if (target.isContentEditable || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
-        if (target.tagName === 'INPUT' && !['radio', 'checkbox'].includes((target as HTMLInputElement).type)) return;
-        // Keys aimed at the open file, a dialog or a popover are theirs.
-        if (target !== document.body && !sectionRef.current?.contains(target)) return;
-        if (target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')) return;
-      }
-      const body = bodyRef.current;
-      if (!body) return;
-      event.preventDefault();
-      if (event.key === 'n') {
-        jumpNew();
-        return;
-      }
-      const heads = [...body.querySelectorAll<HTMLElement>('[data-fold-head]')];
-      if (heads.length === 0) return;
-      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const home = active?.closest('[data-message-article], [data-middle-fold]') ?? null;
-      let index = heads.findIndex((h) => h === active || (home !== null && h.closest('[data-message-article], [data-middle-fold]') === home));
-      if (index < 0) {
-        const top = body.getBoundingClientRect().top;
-        index = heads.findIndex((h) => h.getBoundingClientRect().top >= top) - (event.key === 'j' ? 1 : 0);
-      }
-      const next = heads[Math.max(0, Math.min(heads.length - 1, index + (event.key === 'j' ? 1 : -1)))];
-      if (next) {
-        next.focus({ preventScroll: true });
-        next.scrollIntoView?.({ block: 'nearest' });
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [one, artifactsOn, jumpNew]);
+  const messageKeyAllowed = (event: KeyboardEvent) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    return !one && !artifactsOn && superhumanKeyAllowed(event) && !selectionToolbarShowing() && (!target || target === document.body || !!sectionRef.current?.contains(target));
+  };
+  const stepMessage = (direction: number) => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const heads = [...body.querySelectorAll<HTMLElement>('[data-fold-head]')];
+    if (!heads.length) return;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const home = active?.closest('[data-message-article], [data-middle-fold]') ?? null;
+    let index = heads.findIndex(h => h === active || (home !== null && h.closest('[data-message-article], [data-middle-fold]') === home));
+    if (index < 0) index = heads.findIndex(h => h.getBoundingClientRect().top >= body.getBoundingClientRect().top) - (direction > 0 ? 1 : 0);
+    const next = heads[Math.max(0,Math.min(heads.length-1,index+direction))]!;
+    next.focus({preventScroll:true});next.scrollIntoView?.({block:'nearest'});
+  };
+  useShortcutScope({scope:superhumanMessageShortcuts,handlers:{
+    nextMessage:{when:messageKeyAllowed,handle:()=>stepMessage(1)},
+    previousMessage:{when:messageKeyAllowed,handle:()=>stepMessage(-1)},
+  }});
+
 
   // Another window (or a phone's Send) saved, sent or discarded this thread's draft, or this one did:
   // its copy here follows. A box with no edits since its last save or read takes the new words (or

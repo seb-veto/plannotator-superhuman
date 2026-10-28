@@ -20,3 +20,8 @@ test('project tags keep the same color across reorderings, splits and reload-ind
  for(const id of [...ids].reverse())expect(projectColors(id)).toEqual(colors.get(id)!);
  expect(new Set(ids.map(id=>projectColors(id)[0])).size).toBe(3);
 });
+
+test('Done contains archived conversations and excludes work resumed after archive',()=>{
+ const source=sections(row('a',{resolved_at:'today'}),row('b',{resolved_at:'today',agent_after_archive:true}),row('c'));
+ expect(splitRows(source,{},'done').map(r=>r.thread_id)).toEqual(['a']);
+});

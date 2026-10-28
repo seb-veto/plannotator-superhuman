@@ -1,4 +1,6 @@
-import { useId, useRef, useState, type CSSProperties } from 'react';
+import { useId, useRef, useState, useImperativeHandle, type Ref, type CSSProperties } from 'react';
+import { useShortcutScope } from '@plannotator/ui/shortcuts';
+import { superhumanSelectionShortcuts, superhumanKeyAllowed } from '../shortcuts/superhuman.shortcuts';
 import type { InboxListRow, InboxPriorityMark } from '@plannotator/core/inbox-types';
 import type { InboxListProps } from './InboxList';
 import { rowAgent } from './InboxList';
@@ -10,8 +12,10 @@ import { Tip } from './Tip';
 import { ThreadRowMenu } from './RowMenu';
 import { offersRowMarkRead } from '../markRead';
 
+export interface SuperhumanInboxHandle { run: (id: keyof typeof superhumanSelectionShortcuts.shortcuts) => void }
 export interface SuperhumanInboxProps extends InboxListProps {
   mailView: MailView;
+  actionsRef?: Ref<SuperhumanInboxHandle>;
   marks: PriorityMarks;
   onPriority: (id: string, mark: InboxPriorityMark) => Promise<void>;
   onArchiveSelected: (rows: InboxListRow[]) => Promise<void>;
@@ -35,19 +39,54 @@ export function SuperhumanInbox(props: SuperhumanInboxProps) {
     try { await props.onPriority(id, mark); } catch(e) { setError(e instanceof Error ? e.message : 'The marker was not saved.'); }
     finally { setBusy(null); requestAnimationFrame(() => { if(pressed && !pressed.isConnected && document.activeElement === document.body && root.current?.getClientRects().length) root.current.querySelector<HTMLElement>('[data-thread-id], h1')?.focus(); }); }
   };
+  const archivePicked = async () => {
+    setBusy('archive'); setError('');
+    try { await props.onArchiveSelected(picked); select(new Set()); }
+    catch (e) { setError(e instanceof Error ? e.message : 'The archive failed.'); }
+    finally { setBusy(null); }
+  };
+  const listKeyAllowed = (event: KeyboardEvent) => superhumanKeyAllowed(event) && props.selectedThreadId === null && rows.length > 0 && busy === null && (event.target === document.body || (event.target instanceof Node && !!root.current?.contains(event.target)));
+  const extendSelection = (direction: number) => {
+    const index = Math.max(0, rows.findIndex(row => row.thread_id === active));
+    const next = rows[Math.max(0,Math.min(rows.length-1,index+direction))]!;
+    select(old => new Set([...old, rows[index]!.thread_id, next.thread_id]));
+    const button = root.current?.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(next.thread_id)}"]`);
+    button?.focus({preventScroll:true}); button?.scrollIntoView?.({block:'nearest'});
+    setActiveId(next.thread_id);
+  };
+  const runSelection = (id: keyof typeof superhumanSelectionShortcuts.shortcuts) => {
+    if (!rows.length || busy !== null) return;
+    if (id === 'select' && active) toggle(active);
+    if (id === 'extendNext') extendSelection(1);
+    if (id === 'extendPrevious') extendSelection(-1);
+    if (id === 'selectFrom') select(new Set(rows.slice(Math.max(0,rows.findIndex(r=>r.thread_id===active))).map(r=>r.thread_id)));
+    if (id === 'selectAll') select(new Set(rows.map(r=>r.thread_id)));
+    if (id === 'clear') select(new Set());
+    if (id === 'archiveSelected' && picked.some(r=>!r.resolved_at)) void archivePicked();
+  };
+  useImperativeHandle(props.actionsRef, () => ({run:runSelection}));
+  useShortcutScope({scope:superhumanSelectionShortcuts,target:'document',capture:true,handlers:{
+    select:{when:listKeyAllowed,handle:()=>active&&toggle(active)},
+    extendNext:{when:listKeyAllowed,handle:()=>extendSelection(1)},
+    extendPrevious:{when:listKeyAllowed,handle:()=>extendSelection(-1)},
+    selectFrom:{when:listKeyAllowed,handle:()=>select(new Set(rows.slice(Math.max(0,rows.findIndex(r=>r.thread_id===active))).map(r=>r.thread_id)))},
+    selectAll:{when:listKeyAllowed,handle:()=>select(new Set(rows.map(r=>r.thread_id)))},
+    clear:{when:e=>listKeyAllowed(e)&&selected.size>0,handle:()=>select(new Set())},
+    archiveSelected:{when:e=>listKeyAllowed(e)&&picked.some(r=>!r.resolved_at),handle:()=>void archivePicked()},
+  }});
   return <section ref={root} className="ib-listcol gm-mail sh-mail" aria-label={props.title}>
     <h1 tabIndex={-1} className="ib-sr">{props.title}</h1>
     <div className="gm-tools">
       <input type="checkbox" aria-label="Select all visible conversations" checked={rows.length > 0 && picked.length === rows.length} aria-describedby={help} onChange={e => select(e.target.checked ? new Set(rows.map(r => r.thread_id)) : new Set())} />
       {picked.length ? <>
-        <Tip content="Archive selected"><button type="button" className="gm-icon" aria-label="Archive selected conversations" aria-describedby={help} disabled={busy !== null || picked.every(r=>!!r.resolved_at)} onClick={async()=>{setBusy('archive');setError('');try{await props.onArchiveSelected(picked);select(new Set());}catch(e){setError(e instanceof Error?e.message:'The archive failed.');}finally{setBusy(null);}}}><Icon name="archive" size={20}/></button></Tip>
+        <Tip content="Archive selected"><button type="button" className="gm-icon" aria-label="Archive selected conversations" aria-describedby={help} disabled={busy !== null || picked.every(r=>!!r.resolved_at)} onClick={()=>void archivePicked()}><Icon name="archive" size={20}/></button></Tip>
         <span>{picked.length} selected</span>
       </> : <Tip content="Refresh inbox"><button type="button" className="gm-icon" aria-label="Refresh inbox" aria-describedby={help} onClick={props.onRefresh}><Icon name="refresh" size={19}/></button></Tip>}
       <span className="gm-spacer" />
       {props.onUnreadOnlyChange && <Tip content={props.unreadOnly ? 'Show all messages' : 'Show unread only'}><button type="button" className="gm-unread" aria-label="Unread threads only" aria-pressed={props.unreadOnly === true} aria-describedby={help} onClick={()=>props.onUnreadOnlyChange?.(!props.unreadOnly)}>Unread</button></Tip>}
       <span className="gm-count">{rows.length ? `1–${rows.length} of ${rows.length}` : '0 conversations'}</span>
     </div>
-    <span id={help} className="ib-sr">Tab to a control; Enter or Space activates it. Stars save threads for later. Importance changes priority. Select conversations, then Archive to remove them from Inbox; Undo restores them.</span>
+    <span id={help} className="ib-sr">C composes; / searches; Command-K opens commands. J/K focuses rows, Enter opens, Tab changes split, X selects and E marks done. Tab on other controls keeps normal focus. Stars save threads for later. Importance changes priority. Select conversations, then Archive to remove them from Inbox; Undo restores them.</span>
     {error && <p role="alert" className="gm-error">{error}</p>}
     <ThreadRowMenu className="ib-lbody gm-mail-body" rowOf={id=>rows.find(r=>r.thread_id===id)??null} canMarkRead={props.onMarkRead!==undefined} listedInNew={id=>props.sections.some(s=>s.id==='new'&&s.threads.some(r=>r.thread_id===id))} pinnedOf={props.pinned ? id=>props.pinned!.has(id) : undefined} onTarget={()=>{}} onAction={(row,action)=>props.onRowAction?.(row,action)} disabled={!props.onRowAction} held={props.selectedThreadId!==null}>
       {props.ask}
@@ -72,7 +111,7 @@ export function SuperhumanInbox(props: SuperhumanInboxProps) {
           </div>;
         }) : <div className="gm-no-mail">No conversations in this section.</div>)}
       </section>)}
-      <footer className="gm-footer">Esc: back to Inbox · E: archive · J / K: next / previous · ⌘.: focus</footer>
+      <footer className="gm-footer">⌘K Commands · J / K Navigate · Enter Open · Tab Split · X Select · E Done</footer>
     </ThreadRowMenu>
   </section>;
 }

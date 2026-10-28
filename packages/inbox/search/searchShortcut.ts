@@ -51,7 +51,7 @@ export function isOpenSearchKey(event: KeyEventLike, mac: boolean = isMac): bool
  */
 export function onOpenSearchKey(event: KeyboardEvent, open: (opener: HTMLElement | null) => void, mac: boolean = isMac): void {
   if (!isOpenSearchKey(event, mac)) return;
-  const palette = document.querySelector<HTMLDialogElement>('dialog[data-search-palette][open]');
+  const palette = document.querySelector<HTMLDialogElement>('dialog[data-search-palette][open], dialog[data-dialog="superhuman-command"][open]');
   if (palette) {
     event.preventDefault();
     const input = palette.querySelector<HTMLInputElement>('[role="combobox"]');

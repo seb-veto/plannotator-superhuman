@@ -1,5 +1,7 @@
-import { SuperhumanInbox } from './components/SuperhumanInbox';
+import { SuperhumanInbox, type SuperhumanInboxHandle } from './components/SuperhumanInbox';
 import { SuperhumanHeader } from './components/SuperhumanHeader';
+import { SuperhumanCommands } from './components/SuperhumanCommands';
+import { superhumanActionShortcuts, superhumanNavigationShortcuts, superhumanSelectionShortcuts, superhumanKeyAllowed } from './shortcuts/superhuman.shortcuts';
 import { unreadCounts, type MailView } from './superhuman';
 /**
  * The Plannotator Inbox window (`plannotator inbox`), built to its design of
@@ -424,14 +426,7 @@ if (typeof window !== 'undefined') {
  * (`:focus-visible`). A row that holds focus because it was clicked, or because
  * the window put focus there after a mouse action, is not.
  */
-function keyboardFocused(el: Element): boolean {
-  try {
-    return el.matches(':focus-visible');
-  } catch {
-    // A DOM without the selector (tests): focus counts.
-    return true;
-  }
-}
+
 
 /** The tab is visible and has focus: what the tour's replay needs to stand in for notifications with its chip. */
 function tourPageInFront(): boolean {
@@ -539,6 +534,8 @@ function Inbox() {
   }, [route.page, route.thread, thread?.thread_id, route.file, route.guide]);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [mailView, setMailView] = useState<MailView>('important');
+  const [commandOpen, setCommandOpen] = useState(false);
+  const mailListRef = useRef<SuperhumanInboxHandle>(null);
   /** The open thread's own list row, from its read: an archived thread has none in the list. */
   const [threadRow, setThreadRow] = useState<InboxListRow | null>(null);
   /** The open thread's read when it has not landed: failed (read again soon) or missing (a 404). */
@@ -1493,7 +1490,7 @@ function Inbox() {
   // ⌘K / Ctrl+K opens search: the Inbox's one shortcut, an owner exception (approval amendment 2026-10-14;
   // search/searchShortcut.ts). Capture phase, so it also reaches the open palette, whose keys stop at its dialog.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => onOpenSearchKey(event, (opener) => openSearchRef.current(opener));
+    const onKey = (event: KeyboardEvent) => onOpenSearchKey(event, () => setCommandOpen(true));
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
@@ -2207,30 +2204,82 @@ function Inbox() {
     if (routeRef.current.page !== 'inbox') return null;
     if (key === 'j' || key === 'k') {
       const body = listBody(rootRef.current);
-      if (!body || modalOpen() || (routeRef.current.thread && listCovered())) return null;
+      if (!body || modalOpen()) return null;
       const rows = [...body.querySelectorAll<HTMLElement>('[data-thread-id]')];
       if (rows.length === 0) return null;
       const focused = target?.closest('.ib-listcol [data-row], .ib-listcol [data-thread-id]');
-      const current = focused?.getAttribute('data-thread-id') ?? focused?.getAttribute('data-row') ?? routeRef.current.thread;
+      const current = focused?.getAttribute('data-thread-id') ?? focused?.getAttribute('data-row') ?? routeRef.current.thread ?? body.querySelector('.sh-focused')?.getAttribute('data-row');
       const index = rows.findIndex((row) => row.getAttribute('data-thread-id') === current);
       const nextIndex = index < 0 ? (key === 'j' ? 0 : rows.length - 1) : index + (key === 'j' ? 1 : -1);
       const next = rows[Math.max(0, Math.min(rows.length - 1, nextIndex))]!;
       return () => {
         next.focus({ preventScroll: true });
         next.scrollIntoView?.({ block: 'nearest' });
-        if (next.getAttribute('data-thread-id') !== routeRef.current.thread) next.click();
+        if (routeRef.current.thread && next.getAttribute('data-thread-id') !== routeRef.current.thread) next.click();
       };
     }
     // A row the keyboard is on wins over the thread open beside the list; a
     // row that merely holds focus (clicked, or put there after a mouse close) does not.
-    const rowEl = target?.closest('.ib-listcol [data-row]') ?? null;
-    const rowId = rowEl && target && keyboardFocused(target) ? rowEl.getAttribute('data-row') : null;
+    const rowEl = target?.closest('.ib-listcol [data-row]') ?? (!routeRef.current.thread ? rootRef.current?.querySelector('.sh-focused') : null);
+    const rowId = rowEl?.getAttribute('data-row') ?? null;
     const threadId = rowId ?? (open && open.thread_id === routeRef.current.thread ? open.thread_id : null);
     if (!threadId) return null;
     const row = rowOf(threadId);
     if (!row || row.resolved_at !== null) return null;
     return () => void archiveThread(threadId, threadId, true);
   };
+  const mailTargets = (): InboxListRow[] => {
+    const picked = [...(rootRef.current?.querySelectorAll<HTMLElement>('.gm-row.gm-checked') ?? [])].map(el => rowOf(el.dataset.row!)).filter((row): row is InboxListRow => row !== null);
+    if (picked.length) return picked;
+    const id = routeRef.current.thread ?? rootRef.current?.querySelector<HTMLElement>('.sh-focused')?.dataset.row;
+    const row = id ? rowOf(id) : null;
+    return row ? [row] : [];
+  };
+  const archiveRows = async (rows: InboxListRow[]) => {
+    const archived: string[] = [];
+    try { for (const row of rows.filter(r => !r.resolved_at)) { await inboxApi.resolve(row.thread_id, true); archived.push(row.thread_id); } }
+    finally {
+      await afterWrite();
+      if (archived.length) showToast({ icon: 'archive', lead: `Marked ${archived.length} done`, onUndo: () => { void (async () => { try { for (const id of archived) await inboxApi.resolve(id, false); await afterWrite(); } catch (e) { showError(e); } })(); } });
+    }
+  };
+  const runMailCommand = (id: string) => {
+    const navigate = (view: MailView) => { setMailView(view); setUnreadOnly(false); leave({ page: 'inbox', project: routeRef.current.project, thread: null }); };
+    if (['important','other','starred','sent','done','all'].includes(id)) return navigate(id as MailView);
+    if (id === 'drafts') return leave({ page: 'drafts', project: null, thread: null });
+    if (id === 'search') return openSearch(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    if (id === 'compose') return openCompose({});
+    if (id === 'settings') return go({ page: 'settings', project: null, thread: null, section: 'general' });
+    if (id === 'folders') return changeSidebar(true);
+    if (id === 'nextSplit' || id === 'previousSplit') return navigate(mailView === 'important' ? 'other' : 'important');
+    if (id === 'unread') return navigate('unread');
+    if (id === 'filterStarred') return navigate('starred');
+    if (id === 'filterImportant') return navigate('important');
+    if (id === 'undo') return toast?.onUndo?.();
+    if (Object.hasOwn(superhumanSelectionShortcuts.shortcuts,id)) return mailListRef.current?.run(id as keyof typeof superhumanSelectionShortcuts.shortcuts);
+    const rows = mailTargets();
+    if (!rows.length) return;
+    if (id === 'open') return openRow(rows[0]!);
+    if (id === 'reply' && routeRef.current.thread) return setReplyFor(routeRef.current.thread);
+    if (id === 'archive') return void archiveRows(rows).catch(showError);
+    if (id === 'star') {
+      const starred = !rows.every(row => latestRef.current?.priority?.[row.thread_id]?.starred);
+      void (async () => { for (const row of rows) await inboxApi.priority(row.thread_id,{starred}); await refreshList(false); })().catch(showError);
+    }
+    if (id === 'read') { for (const row of rows) void markRead(row.thread_id, row.unseen > 0); }
+    if (id === 'unarchive') { void (async () => { for (const row of rows) await inboxApi.resolve(row.thread_id,false); await afterWrite(); })().catch(showError); }
+  };
+  const mailKeyAllowed = (event: KeyboardEvent, id: string) => {
+    if (!superhumanKeyAllowed(event) || routeRef.current.file || routeRef.current.guide || routeRef.current.page === 'tour') return false;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (['nextSplit','previousSplit','folders','open'].includes(id)) return routeRef.current.page === 'inbox' && !routeRef.current.thread && (!target || target === document.body || !!target.closest('[data-thread-id]'));
+    if (id === 'reply') return routeRef.current.thread !== null && (event.key !== 'Enter' || !target?.closest('button, a, input, select, textarea, [role=button], [role=checkbox], [role=tab]'));
+    if (['star','read','unarchive'].includes(id)) return routeRef.current.page === 'inbox' && mailTargets().length > 0;
+    return true;
+  };
+  // Sequence scope runs first so G then S navigates instead of starring.
+  useShortcutScope({ scope: superhumanNavigationShortcuts, target: 'document', capture: true, handlers: Object.fromEntries(Object.keys(superhumanNavigationShortcuts.shortcuts).map(id => [id, { when: (event: KeyboardEvent) => mailKeyAllowed(event,id), handle: () => runMailCommand(id) }])) });
+  useShortcutScope({ scope: superhumanActionShortcuts, target: 'document', handlers: Object.fromEntries(Object.keys(superhumanActionShortcuts.shortcuts).map(id => [id, { when: (event: KeyboardEvent) => mailKeyAllowed(event,id), handle: () => runMailCommand(id) }])) });
   const threadKey = useRef<(() => void) | null>(null);
   // The visible Inbox list takes J/K before the thread's window-level message keys.
   useShortcutScope({
@@ -3387,17 +3436,11 @@ function Inbox() {
       <>
         {!fileOpen && !fromCard && (
         <SuperhumanInbox
+          actionsRef={mailListRef}
           mailView={mailView}
           marks={latest?.priority ?? {}}
           onPriority={async (id, mark) => { await inboxApi.priority(id, mark); await refreshList(false); }}
-          onArchiveSelected={async (rows) => {
-            const archived: string[] = [];
-            try { for (const row of rows.filter(r => !r.resolved_at)) { await inboxApi.resolve(row.thread_id, true); archived.push(row.thread_id); } }
-            finally {
-              await afterWrite();
-              if (archived.length) showToast({ icon: 'archive', lead: `Archived ${archived.length} conversation${archived.length === 1 ? '' : 's'}`, onUndo: () => { void (async () => { try { for (const id of archived) await inboxApi.resolve(id, false); await afterWrite(); } catch (e) { showError(e); } })(); } });
-            }
-          }}
+          onArchiveSelected={archiveRows}
           scope={route.project}
           title={filterProject?.name ?? 'Inbox'}
           path={filterProject ? tildePath(filterProject.root, settings?.home) : null}
@@ -3673,9 +3716,10 @@ function Inbox() {
           )
         }
       >
-        <SuperhumanHeader view={mailView} sections={filterSections(latest?.sections ?? [],route.project,false)} marks={latest?.priority ?? {}} page={route.page} onView={next=>{setMailView(next);setUnreadOnly(false);leave({page:'inbox',project:route.project,thread:null});}} onInbox={()=>{setMailView('important');setUnreadOnly(false);leave({page:'inbox',project:null,thread:null});}} onBoard={boardEnabled?()=>leave({page:'board',project:null,thread:null}):undefined} onCompose={opener=>openCompose({},opener)} onSearch={openSearch} onSettings={() => go({ page: 'settings', project: null, thread: null, section: 'general' })} />
+        <SuperhumanHeader view={mailView} sections={filterSections(latest?.sections ?? [],route.project,false)} marks={latest?.priority ?? {}} page={route.page} onView={next=>{setMailView(next);setUnreadOnly(false);leave({page:'inbox',project:route.project,thread:null});}} onInbox={()=>{setMailView('important');setUnreadOnly(false);leave({page:'inbox',project:null,thread:null});}} onBoard={boardEnabled?()=>leave({page:'board',project:null,thread:null}):undefined} onCompose={opener=>openCompose({},opener)} onCommand={()=>setCommandOpen(true)} onSearch={openSearch} onSettings={() => go({ page: 'settings', project: null, thread: null, section: 'general' })} />
         <main className="ib-main">{main}</main>
       </SidebarShell>
+      {commandOpen && <SuperhumanCommands onClose={()=>setCommandOpen(false)} onAction={runMailCommand} hasTarget={mailTargets().length > 0} hasThread={!!route.thread} canUndo={!!toast?.onUndo} />}
       {updateDialog === 'update' && update && (
         <UpdateDialog
           details={updateDetails}

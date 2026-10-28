@@ -19,11 +19,11 @@ describe('the Inbox surface', () => {
     expect(inboxSurface.registry).toBe(inboxShortcutRegistry);
   });
 
-  test('the approved bare letters are E, Z, J and K (Archive, Undo, Inbox navigation)', () => {
+  test('the Superhuman fork registers its authorized action and message keys', () => {
     const letters = listRegistryShortcuts(inboxShortcutRegistry)
       .flatMap((entry) => entry.bindings)
       .filter((binding) => /^[A-Z]$/.test(binding));
-    expect(letters.sort()).toEqual(['E', 'J', 'K', 'Z']);
+    expect(letters.sort()).toEqual(['C', 'E', 'E', 'J', 'K', 'N', 'P', 'R', 'S', 'U', 'X', 'Z']);
   });
 
   test('the full-screen toolbar takes plan review’s Hide tools chord', () => {

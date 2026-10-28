@@ -5,11 +5,11 @@ import type { PriorityMarks } from '../gmail-priority';
 import { useSidebar } from '../shell/sidebar';
 import { Icon } from '../icons';
 import { Tip } from './Tip';
-export function SuperhumanHeader({view,sections,marks,page,onView,onInbox,onBoard,onSearch,onCompose,onSettings}:{view:MailView;sections:readonly InboxListSection[];marks:PriorityMarks;page:string;onView:(v:MailView)=>void;onInbox:()=>void;onBoard?:()=>void;onSearch:(e:HTMLElement)=>void;onCompose:(e:HTMLElement)=>void;onSettings:()=>void}) {
+export function SuperhumanHeader({view,sections,marks,page,onView,onInbox,onBoard,onSearch,onCommand,onCompose,onSettings}:{view:MailView;sections:readonly InboxListSection[];marks:PriorityMarks;page:string;onView:(v:MailView)=>void;onInbox:()=>void;onBoard?:()=>void;onSearch:(e:HTMLElement)=>void;onCommand:()=>void;onCompose:(e:HTMLElement)=>void;onSettings:()=>void}) {
   const {toggleSidebar}=useSidebar();const help=useId();
   return <>
     <nav className="sh-rail" aria-label="Workspace">
-      <Tip content="Search conversations"><button type="button" className="sh-brand" aria-label="Open command search" aria-describedby={help} onClick={e=>onSearch(e.currentTarget)}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M14 2c0 6-3 9-8 10 5 1 8 4 8 10 0-6 3-9 8-10-5-1-8-4-8-10Z"/><path d="M4 11c0 3-1 4-3 5 2 1 3 2 3 5 0-3 1-4 3-5-2-1-3-2-3-5Z"/></svg></button></Tip>
+      <Tip content="Open command menu"><button type="button" className="sh-brand" aria-label="Open command menu" aria-describedby={help} onClick={onCommand}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M14 2c0 6-3 9-8 10 5 1 8 4 8 10 0-6 3-9 8-10-5-1-8-4-8-10Z"/><path d="M4 11c0 3-1 4-3 5 2 1 3 2 3 5 0-3 1-4 3-5-2-1-3-2-3-5Z"/></svg></button></Tip>
       <div className="sh-rail-modes"><Tip content="Go to Inbox"><button type="button" className={page==='inbox'?'sh-active':''} aria-label="Go to Inbox" aria-current={page==='inbox'?'page':undefined} aria-describedby={help} onClick={onInbox}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m3 6 9 7 9-7"/></svg></button></Tip>
       {onBoard&&<Tip content="Open Board"><button type="button" className={page==='board'?'sh-active':''} aria-label="Open Board" aria-describedby={help} onClick={onBoard}><Icon name="board" size={22}/></button></Tip>}</div>
       <span className="sh-grow"/><Tip content="New message"><button type="button" aria-label="New message" aria-haspopup="dialog" aria-describedby={help} onClick={e=>onCompose(e.currentTarget)}><Icon name="compose" size={20}/></button></Tip>
@@ -22,8 +22,8 @@ export function SuperhumanHeader({view,sections,marks,page,onView,onInbox,onBoar
         {!['important','other','inbox'].includes(view)&&<span className="sh-view-label">{view==='all'?'All mail':view[0]!.toUpperCase()+view.slice(1)}</span>}
       </div>:<span className="sh-page-label">{page==='board'?'Board':page==='settings'?'Settings':page==='drafts'?'Drafts':'Plannotator'}</span>}
       <span className="sh-grow"/><Tip content="New message"><button type="button" className="sh-icon" aria-label="Compose a message" aria-describedby={help} onClick={e=>onCompose(e.currentTarget)}><Icon name="compose" size={20}/></button></Tip>
-      <Tip content="Search conversations"><button type="button" className="sh-icon" aria-label="Search mail" aria-keyshortcuts="Meta+K Control+K" aria-describedby={help} onClick={e=>onSearch(e.currentTarget)}><Icon name="search" size={20}/></button></Tip>
+      <Tip content="Search conversations"><button type="button" className="sh-icon" aria-label="Search mail" aria-keyshortcuts="/" aria-describedby={help} onClick={e=>onSearch(e.currentTarget)}><Icon name="search" size={20}/></button></Tip>
     </header>
-    <span id={help} className="ib-sr">Tab to controls, then Enter or Space. Left and right arrows switch Inbox tabs. Navigation opens projects and filters; Search opens conversation search; Compose starts a message to an agent.</span>
+    <span id={help} className="ib-sr">Tab to controls, then Enter or Space. Left and right arrows switch Inbox tabs. Command-K opens actions. Slash opens Search. C starts Compose. Tab switches splits from a conversation row; Compose starts a message to an agent.</span>
   </>;
 }
