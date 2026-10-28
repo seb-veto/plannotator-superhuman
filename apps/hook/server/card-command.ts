@@ -26,7 +26,7 @@ import { inboxHostSessionFromEnv } from "./inbox-mcp-shim";
 
 export { CARD_COMMAND_USAGE };
 
-type Op = "create" | "move" | "say" | "link" | "ship" | "drop" | "list";
+type Op = "create" | "move" | "say" | "link" | "ship" | "drop" | "list" | "edit" | "defer" | "assign";
 
 /** A parsed command: the tool's arguments (without the filled ones), or why it is not one. */
 export type ParsedCardCommand =
@@ -35,6 +35,8 @@ export type ParsedCardCommand =
 
 const VALUE_FLAGS: Record<string, string> = {
   "--column": "column",
+  "--notes": "notes",
+  "--to-host": "assign_host",
   "--say": "say",
   "--you": "you",
   "--thread": "thread_id",
@@ -55,11 +57,14 @@ const POSITIONAL: Record<Op, { names: readonly string[]; required: number }> = {
   ship: { names: ["card_id"], required: 1 },
   drop: { names: ["card_id", "reason"], required: 2 },
   list: { names: [], required: 0 },
+  edit: { names: ["card_id"], required: 1 },
+  defer: { names: ["card_id"], required: 1 },
+  assign: { names: ["card_id", "assign_to"], required: 2 },
 };
 
 export function parseCardCommand(argv: readonly string[]): ParsedCardCommand {
   const op = argv[0] as Op | undefined;
-  if (!op || !Object.hasOwn(POSITIONAL, op)) return { ok: false, error: op ? `Unknown card command: ${op}` : "A card command: create, move, say, link, ship, drop or list." };
+  if (!op || !Object.hasOwn(POSITIONAL, op)) return { ok: false, error: op ? `Unknown card command: ${op}` : "A card command: create, move, say, link, ship, drop, list, edit, defer or assign." };
   const args: Record<string, unknown> = { op };
   const positional: string[] = [];
   let project: string | null = null;

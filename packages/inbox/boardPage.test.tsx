@@ -64,7 +64,7 @@ const CARDS: InboxCardWire[] = [
   card('crd_vite', { title: 'vite 8 and electron-forge', column: 'building', said: 'vite 8 merged', agent: CODEX, refs: [{ kind: 'pr', source: 'github', ref: 'acme/widgets#12', url: 'https://github.com/acme/widgets/pull/12' }] }),
   card('crd_ticks', { title: 'Delivery ticks on list rows', column: 'your_review', you: 'Merge #14' }),
   card('crd_tab', { title: 'Unread count on the tab', column: 'shipped' }),
-  card('crd_poly', { title: 'Polylane plan evaluation', column: 'icebox', aside_from: 'backlog', agent: null, created_by: PERSON, heard_by: PERSON }),
+  card('crd_poly', { title: 'Polylane plan evaluation', column: 'icebox', aside_from: 'building', agent: null, created_by: PERSON, heard_by: PERSON }),
   card('crd_sqlite', { title: 'Spike: SQLite for the store', column: 'dropped', aside_from: 'building', dropped: { at: NEW, by: CODEX, reason: 'Superseded by the JSONL store', seen_at: null } }),
 ];
 
@@ -210,6 +210,20 @@ test.if(hasDom)('the agents’ drops show above the lanes with their reason; Got
   act(() => $('[data-card-restore="crd_sqlite"]')!.click());
   await settle();
   expect(drawn.moves).toEqual([{ id: 'crd_sqlite', move: { op: 'restore' } }]);
+});
+
+test.if(hasDom)('Icebox restore names Backlog even when its previous column was Building', async () => {
+  scriptFetch();
+  const drawn = draw({ openCard: 'crd_poly' });
+  await settle();
+  const panel = $('[data-card-panel="crd_poly"]')!;
+  const restore = panel.querySelector<HTMLButtonElement>('[data-card-restore]')!;
+  expect(restore.textContent).toContain('Restore to Backlog');
+  expect(restore.getAttribute('aria-description')).toContain('unassigned');
+  expect(panel.textContent).toContain('Unassigned work. Restore returns it to Backlog.');
+  act(() => restore.click());
+  await settle();
+  expect(drawn.moves).toEqual([{ id: 'crd_poly', move: { op: 'restore' } }]);
 });
 
 test.if(hasDom)('the opened card: its history and links read now, then Ship, Icebox, and Drop with a reason', async () => {

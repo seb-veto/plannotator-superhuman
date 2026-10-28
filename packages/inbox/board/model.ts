@@ -146,12 +146,12 @@ export type CardMove =
 /**
  * The Move menu's items for a card. A live card: every other live column,
  * then Ship, Icebox and Drop…. A shipped card: back to a live column, Icebox,
- * Drop…. In the Icebox or Dropped: Restore (where it was), then Drop… for an
+ * Drop…. In Icebox: Restore to Backlog; in Dropped: Restore where it was, then Drop… for an
  * iceboxed one. The store refuses nothing the person may do here.
  */
 export function cardMoves(card: InboxCardWire): CardMove[] {
   if (card.column === 'icebox' || card.column === 'dropped') {
-    const back = card.aside_from ?? 'backlog';
+    const back = card.column === 'icebox' ? 'backlog' : card.aside_from ?? 'backlog';
     const out: CardMove[] = [{ kind: 'restore', label: `Restore to ${INBOX_CARD_COLUMN_LABELS[back]}` }];
     if (card.column === 'icebox') out.push({ kind: 'drop', label: 'Drop…' });
     return out;
@@ -269,6 +269,8 @@ export function historyWords(entry: InboxCardHistoryEntry): { before: string; bo
       return { before: 'Linked ', bold: shortRef(entry.ref), after: '', quote: null };
     case 'renamed':
       return { before: 'Renamed by ', bold: null, after: by, quote: `“${entry.title}”` };
+    case 'assigned':
+      return entry.to ? { before: 'Assigned to ', bold: inboxAgentName(entry.to), after: ` by ${by}`, quote: null } : { before: `Unassigned by ${by}`, bold: null, after: '', quote: null };
     case 'notes':
       return { before: `Notes edited by ${by}`, bold: null, after: '', quote: null };
   }

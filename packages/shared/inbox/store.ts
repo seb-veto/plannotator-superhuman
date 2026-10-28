@@ -4683,8 +4683,8 @@ export class InboxStore {
   // counter, so the event stream carries them, and read by nothing that
   // routes or lists threads. Who may move a card (COLUMNS.md, set d): an agent
   // moves its work through the live columns, ships it and may drop it with a
-  // reason; only the person puts a card in the Icebox or brings one back from
-  // it, and only the person restores a card they dropped. Nothing moves a card
+  // reason. Icebox is unassigned agent work; only the person restores their
+  // own dropped cards. Nothing moves a card
   // by guessing: a linked PR that merges is shown, never acted on.
 
   card(id: string): InboxCard | null {
@@ -4694,7 +4694,7 @@ export class InboxStore {
   /** A card as readers get it: only the linked threads that still exist, and the seq of its last write. */
   cardWire(card: InboxCard): InboxCardWire {
     const threads = card.threads.filter((id) => this.messages.get(id)?.thread_id === id);
-    return { ...card, threads, heard_seq: this.cardHeardSeq.get(card.id) ?? 0 };
+    return { ...card, ...(card.column === "icebox" ? { agent: null, sent: null } : {}), threads, heard_seq: this.cardHeardSeq.get(card.id) ?? 0 };
   }
 
   /**
@@ -4725,7 +4725,7 @@ export class InboxStore {
     for (const card of this.cards.values()) {
       if (filter.projectIds && !filter.projectIds.has(card.project_id)) continue;
       if (filter.columns && !filter.columns.has(card.column)) continue;
-      if (filter.agentSession && !(card.agent?.kind === "agent" && card.agent.session === filter.agentSession)) continue;
+      if (filter.agentSession && !(card.column !== "icebox" && card.agent?.kind === "agent" && card.agent.session === filter.agentSession)) continue;
       out.push(card);
     }
     return out.sort(
@@ -4821,8 +4821,8 @@ export class InboxStore {
   /**
    * A new card in `project_id`. From a thread (`threads`), the title defaults
    * to the thread's subject. It starts in Backlog unless a column is given: a
-   * live column, or Shipped for work already done; the Icebox only by the
-   * person, Dropped never. An agent that puts it in Your look or Your review
+   * live column, Shipped for work already done, or unassigned Icebox; Dropped
+   * never. An agent that puts it in Your look or Your review
    * says what the person owes (`you`). The agent that makes a card is the
    * session it belongs to. Idempotent on `idempotency_key` per project.
    */
@@ -4876,7 +4876,6 @@ export class InboxStore {
     }
     const column = input.column === undefined || input.column === null ? "backlog" : this.cardColumn(input.column);
     if (column === "dropped") throw new InboxError("validation_error", "column: a new card starts in a live column (or shipped), never dropped.", { field: "column" });
-    if (column === "icebox" && byAgent) throw this.iceboxRefusal();
     if (target && column !== "backlog") throw new InboxError("validation_error", "thread_id: a card sent to an agent starts in Backlog.", { field: "thread_id" });
     const said = input.say === undefined || input.say === null ? null : this.cardText(input.say, "say", INBOX_CARD_LINE_MAX);
     const you: string | null = input.you === undefined || input.you === null ? null : this.cardText(input.you, "you", INBOX_CARD_LINE_MAX);
@@ -4895,7 +4894,7 @@ export class InboxStore {
       said,
       threads,
       prs,
-      agent: target ? target.to : byAgent ? input.by : null,
+      agent: column === "icebox" ? null : target ? target.to : byAgent ? input.by : null,
       created_at: at,
       created_by: input.by,
       moved_at: at,
@@ -4916,9 +4915,8 @@ export class InboxStore {
    * One write to a card: any of a move (`column`), the agent's last word
    * (`say`), the person's line (`you`), a rename, more threads or PRs, and a
    * drop's `reason`. Every write counts as hearing from the card (`heard_at`).
-   * `restore` (the person) puts a card in the Icebox or Dropped back where it
-   * was. The rules are the column rules (COLUMNS.md, set d):
-   *  - only the person puts a card in the Icebox, or moves one out of it;
+   * Icebox is unassigned work; restoring it returns to Backlog. Dropped
+   * restores to its previous column. Assignment never sends a message.
    *  - an agent drops with a reason; only the person restores what they dropped;
    *  - an agent that moves a card into Your look or Your review says what the
    *    person owes (`you`), and `you` is kept only in those columns.
@@ -4937,6 +4935,7 @@ export class InboxStore {
       reason?: unknown;
       restore?: boolean;
       notes?: unknown;
+      assign_to?: { session: unknown; host?: unknown };
     },
   ): InboxCard {
     const card = this.cards.get(id);
@@ -4952,26 +4951,25 @@ export class InboxStore {
       !(input.prs && input.prs.length > 0) &&
       !(input.refs && input.refs.length > 0) &&
       input.notes === undefined &&
+      input.assign_to === undefined &&
       !input.restore
     ) {
-      throw new InboxError("validation_error", "Nothing to change: pass column, say, you, title, thread_id or pr.");
+      throw new InboxError("validation_error", "Nothing to change: pass column, say, you, title, notes, assignment, thread_id or pr.");
     }
-    let column = card.column;
+    const assignee = input.assign_to === undefined ? undefined : this.cardAssignee(card.project_id, input.assign_to);
+    if (assignee && (card.column === "shipped" || card.column === "dropped")) throw new InboxError("validation_error", "Only active or Icebox cards can be assigned.", { field: "assign_to" });
+    let column = assignee && card.column === "icebox" ? "backlog" : card.column;
     if (input.restore) {
-      if (byAgent) throw new InboxError("card_person_only", "Only the person restores a card from the Icebox or Dropped.");
+      if (byAgent && card.column === "dropped") throw new InboxError("card_person_only", "Only the person restores a dropped card.");
       if (card.column !== "icebox" && card.column !== "dropped") {
         throw new InboxError("validation_error", `Card ${id} is in ${INBOX_CARD_COLUMN_LABELS[card.column]}, not the Icebox or Dropped: nothing to restore.`);
       }
-      column = card.aside_from ?? "backlog";
+      column = card.column === "icebox" ? "backlog" : card.aside_from ?? "backlog";
     } else if (given(input.column)) {
       column = this.cardColumn(input.column);
     }
     const moves = column !== card.column;
     if (moves && byAgent) {
-      if (column === "icebox") throw this.iceboxRefusal();
-      if (card.column === "icebox") {
-        throw new InboxError("card_iceboxed", "The person put this card in the Icebox (paused); only they bring it back. You can still say or link.");
-      }
       if (card.column === "dropped" && card.dropped?.by.kind === "person") {
         throw new InboxError("card_dropped_by_person", "The person dropped this card; only they restore it. You can still say or link.");
       }
@@ -5004,7 +5002,7 @@ export class InboxStore {
     const prs = this.prsOf(refs);
     this.checkLinkCounts(threads.length, refs.length);
     const at = this.stamp();
-    // Leaving a live column (or Shipped) for the Icebox or Dropped remembers it, so restoring goes back there.
+    // Keep the previous column for history and restoring Dropped; Icebox returns to Backlog.
     const asideFrom =
       moves && (column === "icebox" || column === "dropped")
         ? isInboxCardLiveColumn(card.column) || card.column === "shipped"
@@ -5028,6 +5026,8 @@ export class InboxStore {
       dropped,
       aside_from: asideFrom,
       notes: input.notes === undefined ? card.notes : this.cardNotes(input.notes),
+      agent: column === "icebox" ? null : assignee ?? (moves && card.column === "icebox" && byAgent ? input.by : card.column === "icebox" ? null : card.agent),
+      sent: column === "icebox" || assignee ? null : card.sent,
     };
     this.appendCard(next, at);
     return next;
@@ -5118,12 +5118,27 @@ export class InboxStore {
     }
   }
 
-  private iceboxRefusal(): InboxError {
-    return new InboxError(
-      "card_icebox_person_only",
-      "Only the person puts a card in the Icebox (a pause is their call). Keep it in its column and say where it stands, or drop it with a reason.",
-      { field: "column" },
-    );
+  /** Assign metadata only: never sends a message or starts an agent. */
+  assignCard(id: string, input: { by: InboxAuthor; session: unknown; host?: unknown }): InboxCard {
+    const card = this.card(id);
+    if (!card) throw new InboxError("card_not_found", `No card ${id}.`);
+    const to = this.cardAssignee(card.project_id, input);
+    if (card.column !== "icebox" && card.column !== "shipped" && card.column !== "dropped" && card.sent === null && card.agent?.kind === "agent" && card.agent.session === to.session && card.agent.host === to.host) return card;
+    return this.updateCard(id, { by: input.by, assign_to: input });
+  }
+
+  private cardAssignee(projectId: string, input: { session: unknown; host?: unknown }): Extract<InboxAuthor, { kind: "agent" }> {
+    if (typeof input.session !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(input.session)) throw new InboxError("validation_error", "assign_to: an existing agent session id in this project.", { field: "assign_to" });
+    if (input.host !== undefined && (typeof input.host !== "string" || !input.host.trim())) throw new InboxError("validation_error", "assign_host: a nonempty host name.", { field: "assign_host" });
+    let target: Extract<InboxAuthor, { kind: "agent" }> | null = null;
+    for (const message of this.messages.values()) {
+      const author = message.author;
+      if (message.project_id !== projectId || author.kind !== "agent" || author.session !== input.session || (input.host !== undefined && author.host !== input.host)) continue;
+      if (target && target.host !== author.host) throw new InboxError("validation_error", "assign_host: required when a session id occurs on more than one host.", { field: "assign_host" });
+      target = author;
+    }
+    if (!target) throw new InboxError("agent_not_found", "No matching agent session has written in this card's project.", { field: "assign_to" });
+    return target;
   }
 
   private youRefusal(): InboxError {

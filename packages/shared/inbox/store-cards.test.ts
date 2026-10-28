@@ -99,12 +99,12 @@ describe("cards: create", () => {
     expect(refusal(() => store.createCard({ project_id: project.id, by: AGENT, title: "k", idempotency_key: 12 }))).toBe("validation_error");
   });
 
-  test("a person's card belongs to no agent; only the person starts one in the Icebox; nobody starts one Dropped", () => {
+  test("Icebox is unassigned for either author; nobody starts one Dropped", () => {
     const { store, project } = world();
     const { card } = store.createCard({ project_id: project.id, by: PERSON, title: "Polylane evaluation", column: "icebox" });
     expect(card.agent).toBeNull();
     expect(card.column).toBe("icebox");
-    expect(refusal(() => store.createCard({ project_id: project.id, by: AGENT, title: "x", column: "icebox" }))).toBe("card_icebox_person_only");
+    expect(store.createCard({ project_id: project.id, by: AGENT, title: "x", column: "icebox" }).card.agent).toBeNull();
     expect(refusal(() => store.createCard({ project_id: project.id, by: PERSON, title: "x", column: "dropped" }))).toBe("validation_error");
     expect(refusal(() => store.createCard({ project_id: project.id, by: AGENT, title: "x", column: "later" }))).toBe("validation_error");
   });
@@ -166,20 +166,19 @@ describe("cards: who moves a card (COLUMNS.md, set d)", () => {
     expect(store.updateCard(card.id, { by: PERSON, column: "your_review" }).you).toBeNull();
   });
 
-  test("only the person puts a card in the Icebox or brings one back; an agent can still say and link", () => {
+  test("deferring unassigns work; an agent can claim it, while a person restores to unassigned Backlog", () => {
     const { store, project } = world();
-    const { card } = store.createCard({ project_id: project.id, by: AGENT, title: "Triage #1786", column: "designing" });
-    expect(refusal(() => store.updateCard(card.id, { by: AGENT, column: "icebox" }))).toBe("card_icebox_person_only");
-    const iced = store.updateCard(card.id, { by: PERSON, column: "icebox" });
-    expect(iced).toMatchObject({ column: "icebox", aside_from: "designing" });
-    expect(refusal(() => store.updateCard(card.id, { by: AGENT, column: "building" }))).toBe("card_iceboxed");
-    expect(refusal(() => store.updateCard(card.id, { by: AGENT, column: "dropped", reason: "moot" }))).toBe("card_iceboxed");
-    expect(store.updateCard(card.id, { by: AGENT, say: "noted", prs: ["https://github.com/backnotprop/plannotator/pull/1786/files"] }).prs).toEqual([
-      { ref: "backnotprop/plannotator#1786", url: "https://github.com/backnotprop/plannotator/pull/1786" },
-    ]);
-    expect(refusal(() => store.updateCard(card.id, { by: AGENT, restore: true }))).toBe("card_person_only");
-    const back = store.updateCard(card.id, { by: PERSON, restore: true });
-    expect(back).toMatchObject({ column: "designing", aside_from: null });
+    const { card } = store.createCard({ project_id: project.id, by: AGENT, title: "Triage #1786", column: "designing", notes: "Keep this context" });
+    const iced = store.updateCard(card.id, { by: AGENT, column: "icebox" });
+    expect(iced).toMatchObject({ column: "icebox", aside_from: "designing", agent: null, sent: null, notes: "Keep this context", created_by: AGENT });
+    const linked = store.updateCard(card.id, { by: OTHER, say: "noted", prs: ["https://github.com/backnotprop/plannotator/pull/1786/files"] });
+    expect(linked.agent).toBeNull();
+    expect(linked.prs).toEqual([{ ref: "backnotprop/plannotator#1786", url: "https://github.com/backnotprop/plannotator/pull/1786" }]);
+    expect(store.updateCard(card.id, { by: OTHER, column: "building" }).agent).toEqual(OTHER);
+    store.updateCard(card.id, { by: PERSON, column: "icebox" });
+    expect(store.updateCard(card.id, { by: PERSON, restore: true })).toMatchObject({ column: "backlog", aside_from: null, agent: null });
+    store.updateCard(card.id, { by: OTHER, column: "icebox" });
+    expect(store.updateCard(card.id, { by: AGENT, restore: true })).toMatchObject({ column: "backlog", agent: AGENT });
   });
 
   test("an agent drops with a reason; only the person restores what they dropped", () => {
@@ -314,6 +313,22 @@ describe("cards: on disk", () => {
     expect(reopened.updateCard(card.id, { by: AGENT, column: "designing" }).column).toBe("designing");
     expect(reopened.updateCard(card.id, { by: AGENT, column: "asked" }).column).toBe("backlog");
     expect(reopened.listCards({ columns: new Set(["backlog"]) }).map((c) => c.id)).toEqual([card.id]);
+  });
+
+  test("legacy Icebox assignment is hidden without rewriting historical records; assignment survives reopen", () => {
+    const { store, project, dir } = world();
+    store.sendMessage({ project_id: project.id, author: OTHER, body: "Available" });
+    const card = store.createCard({ project_id: project.id, by: AGENT, title: "Deferred work", column: "icebox", notes: "Context" }).card;
+    const file = join(dir, "inbox", "projects", project.key, "cards.jsonl");
+    const legacy = readFileSync(file, "utf8").replace('"agent":null', '"agent":' + JSON.stringify(AGENT));
+    writeFileSync(file, legacy);
+    const reopened = InboxStore.open(dir);
+    expect(reopened.card(card.id)!.agent).toEqual(AGENT);
+    expect(reopened.cardWire(reopened.card(card.id)!)).toMatchObject({ agent: null, sent: null, notes: "Context" });
+    expect(reopened.listCards({ agentSession: "ses_a" })).toEqual([]);
+    expect(readFileSync(file, "utf8")).toBe(legacy);
+    reopened.assignCard(card.id, { by: AGENT, session: "ses_b" });
+    expect(InboxStore.open(dir).card(card.id)).toMatchObject({ column: "backlog", agent: OTHER, notes: "Context", sent: null });
   });
 
   test("listCards: the Board's column order, the latest move first, and its filters", () => {

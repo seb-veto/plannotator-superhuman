@@ -67,7 +67,7 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     const tool = inboxAgentTool(tools)!;
     const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
     expect(props.action!.enum).toContain("card");
-    expect(props.op!.enum).toEqual(["create", "move", "say", "link", "ship", "drop", "list"]);
+    expect(props.op!.enum).toEqual(["create", "move", "say", "link", "ship", "drop", "list", "edit", "defer", "assign"]);
     expect(props.column!.enum).toContain("icebox");
     // Claude Code passes a tool description up to 2,048 characters.
     expect(tool.description.length).toBeLessThan(2048);
@@ -126,14 +126,61 @@ describe.if(INBOX_CARD_ACTION_ON)("the card tool", () => {
     expect((await card({ op: "list", agent_session: "ses_b", asked_by: "anyone" })).structuredContent.total).toBe(1);
   });
 
-  test("refusals: the Icebox by an agent, a bad column, a field the op does not take, a card or thread in another project", async () => {
+  test("notes, defer and assignment work through MCP and HTTP without sending messages", async () => {
+    const { card, call, base, server, project, other } = await world();
+    await call("send_message", { project_path: project, agent_session: "ses_b", agent_host: "pi", agent_name: "Pi", body: "Available for assignment" });
+    await call("send_message", { project_path: other, agent_session: "ses_elsewhere", agent_host: "pi", body: "Other project" });
+    const created = await card({ op: "create", title: "API parity", column: "building", notes: "Original context\nSecond line", ref: "acme/app#12" });
+    const id = created.structuredContent.card.id;
+    expect(created.structuredContent.card.notes).toBe("Original context\nSecond line");
+    const fields = parseInboxToolList(await clients.at(-1)!.listTools());
+    const mapped = inboxToolCall({ action: "card", op: "edit", card_id: id, notes: null }, fields, { project_path: project, agent_session: "ses_a", agent_host: "claude-code", agent_name: "Claude Code" });
+    expect("arguments" in mapped && mapped.arguments.notes).toBeNull();
+    expect((await card({ op: "edit", card_id: id, notes: null })).structuredContent.card.notes).toBeNull();
+    expect((await card({ op: "edit", card_id: id, notes: "Updated\nContext", title: "Card API" })).structuredContent.card).toMatchObject({ notes: "Updated\nContext", title: "Card API" });
+    const cursor = server.store.cursor();
+    for (const notes of ["x".repeat(4001), "bad\u202etext"]) expect((await card({ op: "edit", card_id: id, notes })).isError).toBe(true);
+    expect(server.store.cursor()).toBe(cursor);
+    const before = server.store.threadIds().length;
+    const iced = (await card({ op: "defer", card_id: id, say: "Unassigned for now" })).structuredContent.card;
+    expect(iced).toMatchObject({ column: "icebox", agent: null, sent: null, notes: "Updated\nContext" });
+    expect(iced.refs).toHaveLength(1);
+    expect((await card({ op: "list", asked_by: "anyone" })).structuredContent.cards).toContainEqual(iced);
+    expect((await card({ op: "list" })).structuredContent.cards).toEqual([]);
+    const deferredCursor = server.store.cursor();
+    expect((await card({ op: "assign", card_id: id, assign_to: "ses_elsewhere" })).content[0]!.text).toStartWith("agent_not_found:");
+    expect((await card({ op: "assign", card_id: id })).isError).toBe(true);
+    expect(server.store.cursor()).toBe(deferredCursor);
+    const assigned = (await card({ op: "assign", card_id: id, assign_to: "ses_b" })).structuredContent.card;
+    expect(assigned).toMatchObject({ column: "backlog", agent: { session: "ses_b", host: "pi" }, sent: null, notes: "Updated\nContext" });
+    const assignedCursor = server.store.cursor();
+    expect((await card({ op: "assign", card_id: id, assign_to: "ses_b" })).structuredContent.card).toEqual(assigned);
+    expect(server.store.cursor()).toBe(assignedCursor);
+    expect(server.store.threadIds()).toHaveLength(before);
+    expect(server.store.changesSince(deferredCursor).every((line) => line.kind === "card")).toBe(true);
+    expect(server.store.cardHistory(id)).toContainEqual(expect.objectContaining({ kind: "assigned", by: { kind: "agent", host: "claude-code", session: "ses_a", name: "Claude Code" }, to: expect.objectContaining({ session: "ses_b" }) }));
+    // Identical session ids on distinct hosts require an explicit target host.
+    await call("send_message", { project_path: project, agent_session: "ses_b", agent_host: "codex", body: "Same id on another host" });
+    expect((await card({ op: "assign", card_id: id, assign_to: "ses_b" })).content[0]!.text).toStartWith("validation_error: assign_host:");
+    const missing = await fetch(`${base}/api/inbox/cards/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "assign", assign_to: "ses_elsewhere" }) });
+    expect(missing.status).toBe(404);
+    const http = await fetch(`${base}/api/inbox/cards/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "assign", assign_to: "ses_b", assign_host: "codex" }) });
+    expect(http.status).toBe(200);
+    expect((await http.json()).card.agent).toMatchObject({ session: "ses_b", host: "codex" });
+    await card({ op: "ship", card_id: id });
+    const shippedCursor = server.store.cursor();
+    expect((await card({ op: "assign", card_id: id, assign_to: "ses_b", assign_host: "pi" })).isError).toBe(true);
+    expect(server.store.cursor()).toBe(shippedCursor);
+  });
+
+  test("refusals: a bad column, a field the op does not take, a card or thread in another project", async () => {
     const { card, call, other } = await world();
     const id = (await card({ op: "create", title: "Triage #1786", column: "designing" })).structuredContent.card.id as string;
 
     const iced = await card({ op: "move", card_id: id, column: "icebox" });
-    expect(iced.isError).toBe(true);
-    expect(iced.content[0]!.text).toStartWith("card_icebox_person_only: Only the person puts a card in the Icebox");
-    expect((await card({ op: "create", title: "x", column: "icebox" })).content[0]!.text).toStartWith("card_icebox_person_only:");
+    expect(iced.isError).toBeUndefined();
+    expect(iced.structuredContent.card.agent).toBeNull();
+    expect((await card({ op: "create", title: "x", column: "icebox" })).structuredContent.card.agent).toBeNull();
 
     const bad = await card({ op: "move", card_id: id, column: "later" });
     expect(bad.isError).toBe(true);
@@ -225,8 +272,8 @@ describe("the window's card routes and the event stream", () => {
     const iced = await post(`/api/inbox/cards/${b.id}`, { op: "icebox" });
     expect(iced.status).toBe(200);
     expect(((await iced.json()) as { card: object }).card).toMatchObject({ column: "icebox", aside_from: "backlog" });
-    // The agent cannot bring it back; the person can.
-    expect(() => store.updateCard(b.id, { by: agent, column: "designing" })).toThrow();
+    // Deferring clears assignment; the person's Restore leaves it unassigned.
+    expect(store.cardWire(store.card(b.id)!).agent).toBeNull();
     expect(((await (await post(`/api/inbox/cards/${b.id}`, { op: "restore" })).json()) as { card: { column: string } }).card.column).toBe("backlog");
     expect(((await (await post(`/api/inbox/cards/${a.id}`, { op: "drop", reason: "not now" })).json()) as { card: { dropped: object } }).card.dropped).toMatchObject({ reason: "not now" });
     expect(((await (await post(`/api/inbox/cards/${a.id}`, { op: "move", column: "your_review" })).json()) as { card: { column: string } }).card.column).toBe("your_review");

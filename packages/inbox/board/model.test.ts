@@ -94,6 +94,11 @@ test('history reads like the mock: short refs, and a Start in the card’s own t
   expect(historyWords({ at: 'x', by: PERSON, kind: 'sent', to: CLAUDE, thread_id: 'msg_1', existing_thread: false }).after).toBe(' in a new thread');
 });
 
+test('assignment history distinguishes responsibility from delivery', () => {
+  expect(historyWords({ at: 'x', by: PERSON, kind: 'assigned', to: CLAUDE })).toMatchObject({ before: 'Assigned to ', bold: 'Claude Code', after: ' by you' });
+  expect(historyWords({ at: 'x', by: PERSON, kind: 'assigned', to: null })).toMatchObject({ before: 'Unassigned by you', bold: null });
+});
+
 test('an agent’s drops show until the person has looked, newest first', () => {
   const older = card('older', { column: 'dropped', dropped: { at: '2026-10-20T10:00:00.000Z', by: CLAUDE, reason: 'superseded', seen_at: null } });
   const newer = card('newer', { column: 'dropped', dropped: { at: '2026-10-21T10:00:00.000Z', by: CLAUDE, reason: null, seen_at: null } });

@@ -285,14 +285,14 @@ export function CardPanel(props: CardPanelProps) {
             </button>
           )}
           {foot.primary === 'restore' && (
-            <OnceButton className="ib-btn ib-soft" onClick={props.onRestore} data-card-restore={card.id}>
+            <OnceButton className="ib-btn ib-soft" onClick={props.onRestore} data-card-restore={card.id} title="Restore to active work" aria-description={card.column === 'icebox' ? 'Return to Backlog, unassigned. Press Enter or Space.' : 'Return to the previous column. Press Enter or Space.'}>
               <Icon name="replay" size={15} />
-              Restore to {INBOX_CARD_COLUMN_LABELS[card.aside_from ?? 'backlog']}
+              Restore to {INBOX_CARD_COLUMN_LABELS[card.column === 'icebox' ? 'backlog' : card.aside_from ?? 'backlog']}
             </OnceButton>
           )}
           <span className="ib-bsp" />
           {foot.icebox && (
-            <button type="button" className="ib-btn ib-ghost" onClick={props.onIcebox} data-card-icebox="">
+            <button type="button" className="ib-btn ib-ghost" onClick={props.onIcebox} data-card-icebox="" title="Defer and clear assignment" aria-description="Move to Icebox and clear assignment. Press Enter or Space.">
               <Icon name="snowflake" size={15} />
               Icebox
             </button>
@@ -305,6 +305,7 @@ export function CardPanel(props: CardPanelProps) {
           )}
         </div>
       )}
+      {card.column === 'icebox' && <p className="ib-crdp-meta">Unassigned work. Restore returns it to Backlog. Use Enter or Space on Restore.</p>}
       <div className="ib-sr" aria-live="polite">
         {said}
       </div>
@@ -333,9 +334,9 @@ function ColumnMenu({ card, sent, onColumn, onRestore }: { card: InboxCardWire; 
           <Menu.Popup className="ib-pm" aria-label="Move the card" data-card-menu={card.id}>
             {aside && (
               <>
-                <Menu.Item className="ib-pmi" label="Restore" onClick={onRestore} data-card-action="restore">
+                <Menu.Item className="ib-pmi" label="Restore" onClick={onRestore} title="Restore to active work" data-card-action="restore">
                   <Icon name="replay" size={15} />
-                  Restore to {INBOX_CARD_COLUMN_LABELS[card.aside_from ?? 'backlog']}
+                  Restore to {INBOX_CARD_COLUMN_LABELS[card.column === 'icebox' ? 'backlog' : card.aside_from ?? 'backlog']}
                 </Menu.Item>
                 <Menu.Separator className="ib-pm-sep" />
               </>

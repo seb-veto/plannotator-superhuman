@@ -792,8 +792,7 @@ function CardList({ title, empty, cards, ...common }: CardCommon & { title: stri
 }
 
 /**
- * The Icebox page: cards the person put aside (nothing happens to them: no
- * agent is told, nothing moves them), then Dropped with the date, who dropped
+ * The Icebox page: work currently unassigned; deferral sends no message, then Dropped with the date, who dropped
  * it, the reason and Restore. Opening it is the person looking at Dropped.
  */
 function IceboxPage({
@@ -830,7 +829,7 @@ function IceboxPage({
   const dropped = cards.filter((c) => c.column === 'dropped').sort((a, b) => (b.dropped?.at ?? b.moved_at).localeCompare(a.dropped?.at ?? a.moved_at));
   return (
     <div className="ib-blists">
-      <CardList title="Icebox" empty="Nothing on ice. Put a card here to set it aside: no agent is told and nothing moves it." cards={iced} {...common} />
+      <CardList title="Icebox" empty="Nothing on ice. Put work here to leave it unassigned. Restore returns it to Backlog." cards={iced} {...common} />
       <DroppedList cards={dropped} onRestore={onRestore} />
     </div>
   );

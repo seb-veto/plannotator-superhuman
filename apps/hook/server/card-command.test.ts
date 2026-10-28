@@ -152,14 +152,33 @@ describe.if(INBOX_CARD_ACTION_ON)("plannotator card", () => {
     expect((JSON.parse((await card(box, ["list", "--anyone", "--json"], session)).stdout) as { total: number }).total).toBe(2);
   }, 30_000);
 
+  test("CLI edits notes, defers and assigns through the running Inbox", async () => {
+    const box = sandbox();
+    await seed(box);
+    const registry = readInboxRegistry(box.dataDir)!;
+    const seeded = await fetch(`http://127.0.0.1:${registry.port}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_message", arguments: { project_path: box.project, agent_session: "ses_target", agent_host: "codex", body: "Assignment target" } } }) });
+    expect(seeded.status).toBe(200);
+    const made = await card(box, ["create", "CLI parity", "--notes", "First\nSecond", "--json"]);
+    expect(made.code).toBe(0);
+    const id = JSON.parse(made.stdout).card.id;
+    expect(JSON.parse(made.stdout).card.notes).toBe("First\nSecond");
+    const edit = await card(box, ["edit", id, "--notes", "", "--json"]);
+    expect(edit.code).toBe(0);
+    expect(JSON.parse(edit.stdout).card.notes).toBeNull();
+    expect((await card(box, ["defer", id])).code).toBe(0);
+    const assigned = await card(box, ["assign", id, "ses_target", "--to-host", "codex", "--json"]);
+    expect(assigned.code).toBe(0);
+    expect(JSON.parse(assigned.stdout).card).toMatchObject({ column: "backlog", agent: { session: "ses_target", host: "codex" }, sent: null });
+    expect((await card(box, ["assign", id])).code).toBe(2);
+  }, 30_000);
+
   test("a refusal exits 1 with the tool's code; bad usage exits 2", async () => {
     const box = sandbox();
     await seed(box);
     const id = (JSON.parse((await card(box, ["create", "Triage", "--json"])).stdout) as { card: { id: string } }).card.id;
     const iced = await card(box, ["move", id, "icebox"]);
-    expect(iced.code).toBe(1);
-    expect(iced.stdout).toBe("");
-    expect(iced.stderr).toStartWith("card_icebox_person_only: Only the person puts a card in the Icebox");
+    expect(iced.code).toBe(0);
+    expect(iced.stdout).toContain("Icebox");
     const dropped = await card(box, ["drop", id]);
     expect(dropped.code).toBe(2);
     expect(dropped.stderr).toContain("card drop needs: card_id, reason.");

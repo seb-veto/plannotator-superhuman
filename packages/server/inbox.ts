@@ -487,6 +487,7 @@ const ERROR_STATUS: Record<string, number> = {
   // The Board's cards (approval "inbox-board"): who may move a card.
   card_not_found: 404,
   card_no_project: 404,
+  agent_not_found: 404,
   card_other_project: 422,
   card_icebox_person_only: 403,
   card_iceboxed: 409,
@@ -981,9 +982,9 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
 
   /**
    * The person's moves on a card (`POST /api/inbox/cards/:id`): `op` move
-   * (`column`, any; a move to dropped may carry `reason`), icebox (the pause
-   * only the person makes), drop (`reason` optional), restore (back to the
-   * column the card left for the Icebox or Dropped).
+   * (`column`, any; a move to dropped may carry `reason`), icebox (unassign),
+   * drop (`reason` optional), restore (Icebox to Backlog; Dropped to its previous
+   * column), edit notes/title, link, assign metadata, or send through a thread.
    */
   const personCardMove = (id: string, body: Record<string, unknown>) => {
     if (!isInboxId("crd", id)) throw new InboxError("validation_error", "A card id (crd_).", { field: "card" });
@@ -1005,11 +1006,13 @@ export async function startInboxServer(options: InboxServerOptions = {}): Promis
       case "link":
         // A thread or a reference (issue, PR) the person links from the opened card.
         return store.updateCard(id, { by, threads: body.thread_id ? [body.thread_id] : [], refs: body.ref ? [body.ref] : [] });
+      case "assign":
+        return store.assignCard(id, { by, session: body.assign_to, host: body.assign_host });
       case "send":
         // Sent to an agent: `thread_id` is the thread the window just started for it (compose's Send).
         return store.sendCard(id, { thread_id: body.thread_id });
       default:
-        throw new InboxError("validation_error", "op: move, icebox, drop, restore, edit, link or send.", { field: "op" });
+        throw new InboxError("validation_error", "op: move, icebox, drop, restore, edit, link, assign or send.", { field: "op" });
     }
   };
 

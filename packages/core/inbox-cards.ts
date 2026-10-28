@@ -8,8 +8,7 @@
  *
  * Columns (COLUMNS.md, set d, as amended 2026-10-26): five live ones,
  * Backlog · Designing · Your look · Building · Your review, and three the
- * Board shows as links: Shipped, Icebox (only the person puts a card there
- * or takes one out; nothing happens to a card there) and Dropped. A card in
+ * Board shows as links: Shipped, Icebox (agent work currently unassigned) and Dropped. A card in
  * Backlog is not started and not sent to any agent (the column was "Asked"
  * until the owner renamed it; a stored `asked` reads as `backlog`,
  * inboxCardColumnOf). A card in the
@@ -148,8 +147,8 @@ export interface InboxCard {
   threads: string[];
   prs: InboxCardPr[];
   /**
-   * The agent session the card belongs to (the one that made it): where "Ask
-   * where this is" goes. Null for a card the person made. Named `agent`, not
+   * The assigned agent session: where "Ask where this is" goes.
+   * Null for unassigned work, including every Icebox card. Named `agent`, not
    * `owner`: the Board's owner is the person.
    */
   agent: InboxAuthor | null;
@@ -162,12 +161,12 @@ export interface InboxCard {
   heard_by: InboxAuthor;
   /** Set while the card is in Dropped. */
   dropped: InboxCardDrop | null;
-  /** The column a card left for Icebox or Dropped: where restoring puts it back. */
+  /** The column a card left for Icebox or Dropped; Dropped restores here, Icebox to Backlog. */
   aside_from: InboxCardColumn | null;
   /** An agent's create is idempotent on it, per project. */
   idempotency_key: string | null;
   /**
-   * The person's notes (step 2): free text, line breaks kept, at most
+   * Card notes: free text, line breaks kept, at most
    * INBOX_CARD_NOTES_MAX characters. When the card is sent to an agent the
    * notes are the message. Null on a card written before notes existed.
    */
@@ -309,6 +308,7 @@ export type InboxCardHistoryEntry =
   | { at: string; by: InboxAuthor; kind: "linked_ref"; ref: string; ref_kind: string }
   | { at: string; by: InboxAuthor; kind: "renamed"; title: string }
   | { at: string; by: InboxAuthor; kind: "notes" }
+  | { at: string; by: InboxAuthor; kind: "assigned"; to: InboxAuthor | null }
   | { at: string; by: InboxAuthor; kind: "sent"; to: InboxAuthor; thread_id: string; /** Sent into a thread the card already linked (Start), not a new one. */ existing_thread: boolean };
 
 /**
@@ -338,12 +338,15 @@ export function inboxCardHistory(snapshots: readonly InboxCard[]): InboxCardHist
     }
     const known = inboxCardRefsOf(before);
     for (const ref of inboxCardRefsOf(card)) if (!known.some((k) => k.url === ref.url)) out.push({ at, by, kind: "linked_ref", ref: ref.ref, ref_kind: ref.kind });
+    const nextAgent = card.agent?.kind === "agent" ? card.agent : null;
+    const previousAgent = before.agent?.kind === "agent" ? before.agent : null;
+    if ((nextAgent?.session !== previousAgent?.session || nextAgent?.host !== previousAgent?.host) && !(card.sent && (!before.sent || before.sent.at !== card.sent.at))) out.push({ at, by, kind: "assigned", to: card.agent });
     if (card.title !== before.title) out.push({ at, by, kind: "renamed", title: card.title });
     if ((card.notes ?? null) !== (before.notes ?? null)) out.push({ at, by, kind: "notes" });
     if (card.column !== before.column) {
       if (card.column === "dropped") out.push({ at, by, kind: "dropped", reason: card.dropped?.reason ?? null });
       else if (before.column === "icebox" || before.column === "dropped") {
-        if (card.column === (before.aside_from ?? "backlog") && by.kind === "person") out.push({ at, by, kind: "restored", column: card.column });
+        if (card.column === (before.column === "icebox" ? "backlog" : before.aside_from ?? "backlog") && by.kind === "person") out.push({ at, by, kind: "restored", column: card.column });
         else out.push({ at, by, kind: "moved", column: card.column, you: card.you });
       } else out.push({ at, by, kind: "moved", column: card.column, you: card.you });
     } else if (card.you !== before.you && card.you) out.push({ at, by, kind: "you", text: card.you });
